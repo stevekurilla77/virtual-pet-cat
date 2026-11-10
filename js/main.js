@@ -28,6 +28,8 @@ const hint = document.querySelector("#hint");
 const muteBtn = document.querySelector("#mute");
 const editBtn = document.querySelector("#edit");
 const tray = document.querySelector("#tray");
+const dock = document.querySelector("#dock");
+const trayToggle = document.querySelector("#tray-toggle");
 const topbar = document.querySelector("#topbar");
 const bars = {
   playful: document.querySelector("#bar-play"),
@@ -215,6 +217,14 @@ function bindControls() {
     });
   }
 
+  trayToggle.addEventListener("click", () => {
+    const open = dock.classList.toggle("collapsed");
+    trayToggle.setAttribute("aria-expanded", open ? "false" : "true");
+    trayToggle.setAttribute("aria-label", open ? "Show toys" : "Hide toys");
+    trayToggle.textContent = open ? "Show" : "Toys";
+    if (!hud.hidden) game.resize(measureUi());
+  });
+
   roomCanvas.addEventListener("pointerdown", onPointerDown, { passive: false });
   roomCanvas.addEventListener("pointermove", onPointerMove, { passive: false });
   roomCanvas.addEventListener("pointerup", onPointerUp);
@@ -232,6 +242,7 @@ function onPointerDown(event) {
   roomCanvas.setPointerCapture(event.pointerId);
   const point = localPoint(event);
   game.pointerDown(point.x, point.y, event.pointerId);
+  hud.classList.toggle("is-playing", game.pointer.down);
 }
 
 function onPointerMove(event) {
@@ -243,6 +254,7 @@ function onPointerMove(event) {
 function onPointerUp(event) {
   if (game.pointer.down && event.pointerId != null && event.pointerId !== game.pointer.id) return;
   game.pointerUp();
+  hud.classList.remove("is-playing");
 }
 
 function localPoint(event) {
@@ -312,7 +324,7 @@ function openRoom(config, intro) {
 function measureUi() {
   return {
     top: topbar.getBoundingClientRect().height,
-    bottom: tray.getBoundingClientRect().height + 6,
+    bottom: dock.getBoundingClientRect().height + 10,
   };
 }
 

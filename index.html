@@ -44,28 +44,26 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 16.5V20h3.5L18 9.5 14.5 6z"/><path fill="currentColor" d="M16 4.5 19.5 8 21 6.5 17.5 3z"/></svg>
         </button>
       </div>
-      <p id="hint"></p>
-      <div id="tray" role="toolbar" aria-label="Toys">
-        <button class="toy" type="button" data-tool="wand" aria-pressed="false">
-          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 26c8-2 12-8 14-14" fill="none" stroke="#C9843A" stroke-width="3" stroke-linecap="round"/><path d="M20 12c4-6 10-8 12-6-2 4-6 6-10 8z" fill="#F07A8A"/><path d="M20 12c2 4 4 8 8 10-4-1-7-3-9-6z" fill="#F8C9A4"/></svg>
-          Feather
-        </button>
-        <button class="toy" type="button" data-tool="laser" aria-pressed="false">
-          <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="10" fill="#ffd0d4"/><circle cx="16" cy="16" r="4" fill="#ff2d3a"/><circle cx="14.5" cy="14.5" r="1.3" fill="#fff"/></svg>
-          Laser
-        </button>
-        <button class="toy" type="button" data-tool="yarn" aria-pressed="false">
-          <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="17" r="8" fill="#E23B4A"/><path d="M10 16c4 2 8-2 12 1M11 20c4-2 7 1 10-1" fill="none" stroke="#F7D0A8" stroke-width="1.4"/><path d="M22 14c4-2 6 2 4 5" fill="none" stroke="#F2C14B" stroke-width="1.6" stroke-linecap="round"/></svg>
-          Yarn
-        </button>
-        <button class="toy" type="button" data-tool="pet" aria-pressed="false">
-          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M9 18c0-4 2-8 7-8s7 4 7 8-2 7-7 7-7-3-7-7z" fill="#F6C7A4" stroke="#4A3428" stroke-width="1.6"/><path d="M12 14c.4-3 1.2-5 2-5M16 13V9M20 14c-.4-3-1.2-5-2-5" fill="none" stroke="#4A3428" stroke-width="1.6" stroke-linecap="round"/></svg>
-          Pet
-        </button>
-        <button class="toy" type="button" data-tool="box" aria-pressed="false">
-          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 13h14v10H7z" fill="#E2B56E" stroke="#8A5A32" stroke-width="1.6"/><path d="M21 15l5 2v8l-5-2z" fill="#C9925A" stroke="#8A5A32" stroke-width="1.6"/><path d="M7 13l6-4h10l-6 4" fill="#F0D2A0" stroke="#8A5A32" stroke-width="1.6"/></svg>
-          Box
-        </button>
+      <p id="hint" hidden></p>
+      <div id="dock">
+        <button id="tray-toggle" type="button" aria-expanded="true" aria-label="Hide toys">Toys</button>
+        <div id="tray" role="toolbar" aria-label="Toys">
+          <button class="toy" type="button" data-tool="wand" aria-pressed="false" aria-label="Feather">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 26c8-2 12-8 14-14" fill="none" stroke="#C9843A" stroke-width="3" stroke-linecap="round"/><path d="M20 12c4-6 10-8 12-6-2 4-6 6-10 8z" fill="#F07A8A"/><path d="M20 12c2 4 4 8 8 10-4-1-7-3-9-6z" fill="#F8C9A4"/></svg>
+          </button>
+          <button class="toy" type="button" data-tool="laser" aria-pressed="false" aria-label="Laser">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="10" fill="#ffd0d4"/><circle cx="16" cy="16" r="4" fill="#ff2d3a"/><circle cx="14.5" cy="14.5" r="1.3" fill="#fff"/></svg>
+          </button>
+          <button class="toy" type="button" data-tool="yarn" aria-pressed="false" aria-label="Yarn">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="17" r="8" fill="#E23B4A"/><path d="M10 16c4 2 8-2 12 1M11 20c4-2 7 1 10-1" fill="none" stroke="#F7D0A8" stroke-width="1.4"/><path d="M22 14c4-2 6 2 4 5" fill="none" stroke="#F2C14B" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+          <button class="toy" type="button" data-tool="pet" aria-pressed="false" aria-label="Pet">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M9 18c0-4 2-8 7-8s7 4 7 8-2 7-7 7-7-3-7-7z" fill="#F6C7A4" stroke="#4A3428" stroke-width="1.6"/><path d="M12 14c.4-3 1.2-5 2-5M16 13V9M20 14c-.4-3-1.2-5-2-5" fill="none" stroke="#4A3428" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+          <button class="toy" type="button" data-tool="box" aria-pressed="false" aria-label="Box">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 13h14v10H7z" fill="#E2B56E" stroke="#8A5A32" stroke-width="1.6"/><path d="M21 15l5 2v8l-5-2z" fill="#C9925A" stroke="#8A5A32" stroke-width="1.6"/><path d="M7 13l6-4h10l-6 4" fill="#F0D2A0" stroke="#8A5A32" stroke-width="1.6"/></svg>
+          </button>
+        </div>
       </div>
     </div>
 

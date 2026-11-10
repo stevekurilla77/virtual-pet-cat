@@ -1,4 +1,5 @@
 import { COATS, EYES } from "./coats.js";
+import { paintBoxCat, paintCat } from "./kitten.js";
 import { lum, quadPoint, roundRect } from "./util.js";
 
 const OUTLINE = "#4A3428";
@@ -95,7 +96,7 @@ function drawFloor(ctx, room) {
   for (let i = 0; i < rows; i++) {
     const y0 = floorY + ((h - floorY) * i) / rows;
     const y1 = floorY + ((h - floorY) * (i + 1)) / rows;
-    ctx.fillStyle = i % 2 === 0 ? "#E7A85A" : "#DEA24E";
+    ctx.fillStyle = i % 2 === 0 ? "#d7b48a" : "#c9a06e";
     ctx.fillRect(0, y0, w, y1 - y0 + 0.5);
   }
   ctx.strokeStyle = "rgba(120, 64, 24, 0.13)";
@@ -196,7 +197,7 @@ function drawWindow(ctx, room, time, birds, extras) {
   ctx.restore();
 
   ctx.strokeStyle = "#FFF8F2";
-  ctx.lineWidth = 7;
+  ctx.lineWidth = 4;
   ctx.lineCap = "butt";
   ctx.beginPath();
   ctx.moveTo(win.x + win.w / 2, win.y + 2);
@@ -422,7 +423,7 @@ export function drawBox(ctx, box) {
   ctx.fillRect(x + w * 0.34, y + 20, 9, h - 24);
 
   ctx.strokeStyle = "#8A5A32";
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1.25;
   ctx.beginPath();
   ctx.arc(x + w * 0.26, y + h * 0.62, 7, 0, Math.PI * 2);
   ctx.stroke();
@@ -547,42 +548,7 @@ export function catHit(cat, x, y) {
 }
 
 export function drawCat(ctx, cat, time) {
-  if (cat.inBox) return;
-  drawShadow(ctx, cat);
-  ctx.save();
-  ctx.translate(cat.x + Math.sin(time * 48) * cat.purr * 0.35, cat.groundY + cat.hop);
-  ctx.scale(cat.facing * cat.scale, cat.scale);
-  const squash = cat.squash || 1;
-  ctx.scale(1 + (1 - squash) * 0.35, squash);
-  const rot = cat.drawRot || 0;
-  ctx.translate(0, -28);
-  ctx.rotate(rot);
-  ctx.translate(0, 28);
-
-  if (cat.back < 0.98) {
-    ctx.save();
-    ctx.globalAlpha *= 1 - cat.back;
-    if (cat.curl < 0.98) {
-      ctx.save();
-      ctx.globalAlpha *= 1 - cat.curl;
-      drawActive(ctx, cat, time);
-      ctx.restore();
-    }
-    if (cat.curl > 0.02) {
-      ctx.save();
-      ctx.globalAlpha *= Math.min(1, cat.curl);
-      drawCurl(ctx, cat, time);
-      ctx.restore();
-    }
-    ctx.restore();
-  }
-  if (cat.back > 0.02) {
-    ctx.save();
-    ctx.globalAlpha *= Math.min(1, cat.back);
-    drawBack(ctx, cat, time);
-    ctx.restore();
-  }
-  ctx.restore();
+  paintCat(ctx, cat, time);
 }
 
 function drawShadow(ctx, cat) {
@@ -1302,93 +1268,42 @@ function drawBack(ctx, cat, time) {
 }
 
 export function drawBoxCat(ctx, cat, box, time) {
-  const f = fluffExtra(cat);
-  const wag = Math.sin(time * cat.tailSpeed) * cat.tailAmp * 0.08;
-  const coat = cat.app.coat;
-  ctx.save();
-  ctx.strokeStyle = coat.pattern === "point" ? coat.point : coat.base;
-  ctx.lineWidth = f ? 14 : 7;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(box.x + 16, box.y + 28);
-  ctx.quadraticCurveTo(box.x - 16, box.y + 10 + wag * 20, box.x - 8, box.y - 8 + wag * 30);
-  ctx.stroke();
-  if (f) {
-    ctx.fillStyle = coat.shade;
-    ctx.beginPath();
-    ctx.arc(box.x - 8, box.y - 8 + wag * 30, 10, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
-
-  const bob = Math.sin(time * 1.6) * 2;
-  const rise = (cat.peek || 0.7) * 18;
-  ctx.save();
-  ctx.translate(box.x + box.w * 0.4, box.y + 6 - rise + bob);
-  ctx.scale((cat.facing || -1) * cat.scale * 0.92, cat.scale * 0.92);
-  ctx.fillStyle = coat.base;
-  ctx.beginPath();
-  ctx.ellipse(0, 16, 16 + f * 4, 12, 0, 0, Math.PI * 2);
-  ctx.fill();
-  strokeCute(ctx, cat.app.outline, 2);
-  drawHead(ctx, cat, time);
-  ctx.restore();
+  paintBoxCat(ctx, cat, box, time);
 }
 
 export function drawFeather(ctx, x, y, time) {
   ctx.save();
-  const handX = x + 36;
-  const handY = y + 150;
-  ctx.strokeStyle = "#C9843A";
-  ctx.lineWidth = 4;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(handX, handY);
-  ctx.quadraticCurveTo(x + 40, y + 70, x + 8, y + 16);
-  ctx.stroke();
-  ctx.strokeStyle = "rgba(90,60,40,0.45)";
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.moveTo(x + 8, y + 16);
-  ctx.quadraticCurveTo(x + 4, y + 8, x, y);
-  ctx.stroke();
   ctx.translate(x, y);
-  ctx.rotate(Math.sin(time * 4) * 0.15 - 0.6);
-  ctx.fillStyle = "#F07A8A";
+  ctx.globalAlpha = 0.78;
+  ctx.rotate(-0.9 + Math.sin(time * 3) * 0.08);
+  ctx.fillStyle = "rgba(196, 84, 86, 0.9)";
   ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.quadraticCurveTo(16, -8, 28, 2);
-  ctx.quadraticCurveTo(14, 4, 0, 0);
+  ctx.ellipse(0, -7, 3.2, 9, 0.15, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#F8C9A4";
+  ctx.fillStyle = "rgba(232, 206, 170, 0.75)";
   ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.quadraticCurveTo(14, 6, 24, 16);
-  ctx.quadraticCurveTo(10, 8, 0, 0);
+  ctx.ellipse(1.4, -2, 1.8, 6, 0.35, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = OUTLINE_SOFT;
-  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = "rgba(90, 60, 40, 0.35)";
+  ctx.lineWidth = 0.8;
   ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(26, 6);
+  ctx.moveTo(0, 2);
+  ctx.lineTo(1, 12);
   ctx.stroke();
   ctx.restore();
 }
 
 export function drawLaser(ctx, x, y, time) {
-  const pulse = 0.65 + Math.sin(time * 10) * 0.35;
+  const pulse = 0.55 + Math.sin(time * 10) * 0.2;
   ctx.save();
-  ctx.fillStyle = `rgba(255, 40, 50, ${0.22 * pulse})`;
+  ctx.globalAlpha = 0.8;
+  ctx.fillStyle = `rgba(255, 48, 56, ${0.22 * pulse})`;
   ctx.beginPath();
-  ctx.arc(x, y, 16, 0, Math.PI * 2);
+  ctx.arc(x, y, 6.5, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#FF2D3A";
+  ctx.fillStyle = "rgba(255, 36, 48, 0.85)";
   ctx.beginPath();
-  ctx.arc(x, y, 4.2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.beginPath();
-  ctx.arc(x - 1.2, y - 1.2, 1.4, 0, Math.PI * 2);
+  ctx.arc(x, y, 2, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }

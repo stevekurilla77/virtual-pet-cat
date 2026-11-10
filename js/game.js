@@ -118,7 +118,7 @@ export class Game {
     this.room = layoutRoom(this.w, this.h, this.ui.top, this.ui.bottom);
     this.room.reduced = this.reduced;
     if (!this.cat) return;
-    this.cat.scale = clamp(Math.min(this.w / 280, this.h / 640), 0.9, 1.5);
+    this.cat.scale = clamp(Math.min(this.w / 165, this.h / 430), 1.25, 2.35);
     this.cat.groundY = this.room.ground;
     this.cat.x = clamp(this.cat.x, 36, this.w - 36);
   }
@@ -187,14 +187,15 @@ export class Game {
     this.pointer = { x, y, down: true, id, sx: x, sy: y, lx: x, ly: y, moved: 0 };
     if (!this.cat) return;
     const boxHit = hitBox(this.room.box, x, y);
-    const hit = catHit(this.cat, x, y);
+    const petPoint = this.aboveFinger(x, y, 48);
+    const hit = this.tool === "pet" ? catHit(this.cat, petPoint.x, petPoint.y) : catHit(this.cat, x, y);
     if ((this.tool === null || this.tool === "box" || (this.tool === "pet" && !hit.body)) && boxHit) {
       this.toggleBox();
       return;
     }
     if (this.tool === "wand") this.startWand(x, y);
     else if (this.tool === "laser") this.startLaser(x, y);
-    else if (this.tool === "pet") this.startPet(x, y, hit);
+    else if (this.tool === "pet") this.startPet(petPoint.x, petPoint.y, hit);
     else if (this.tool === "yarn") this.grabYarn(x, y);
   }
 
@@ -212,23 +213,27 @@ export class Game {
     this.pointer.x = x;
     this.pointer.y = y;
     if (this.wand.active) {
+      const toy = this.aboveFinger(x, y);
       this.wand.speed = len(dx, dy) * 60;
-      this.wand.x = x;
-      this.wand.y = this.clampPlayY(y);
+      this.wand.x = toy.x;
+      this.wand.y = toy.y;
     }
     if (this.laser.active) {
+      const toy = this.aboveFinger(x, y);
       this.laser.speed = len(dx, dy) * 60;
-      this.laser.x = x;
-      this.laser.y = this.clampPlayY(y);
+      this.laser.x = toy.x;
+      this.laser.y = toy.y;
     }
     if (this.tool === "pet" && this.cat && this.grab <= 0) {
-      const hit = catHit(this.cat, x, y);
+      const touch = this.aboveFinger(x, y, 48);
+      const hit = catHit(this.cat, touch.x, touch.y);
       this.pet.touching = hit.body;
-      if (hit.body) this.strokePet(x, y, hit, len(dx, dy));
+      if (hit.body) this.strokePet(touch.x, touch.y, hit, len(dx, dy));
     }
     if (this.tool === "yarn" && this.yarn && this.yarn.held) {
-      this.yarn.x = x;
-      this.yarn.y = this.clampPlayY(y);
+      const toy = this.aboveFinger(x, y, 64);
+      this.yarn.x = toy.x;
+      this.yarn.y = toy.y;
       this.yarn.vx = dx * 42;
       this.yarn.vy = dy * 42;
     }
@@ -260,12 +265,17 @@ export class Game {
     return clamp(y, this.room.playTop + 10, this.room.playBottom - 8);
   }
 
+  aboveFinger(x, y, lift = 84) {
+    return { x, y: this.clampPlayY(y - lift) };
+  }
+
   startWand(x, y) {
     this.cancelBird();
     this.leaveBoxForPlay();
+    const toy = this.aboveFinger(x, y);
     this.wand.active = true;
-    this.wand.x = x;
-    this.wand.y = this.clampPlayY(y);
+    this.wand.x = toy.x;
+    this.wand.y = toy.y;
     this.wand.freeze = 0;
     this.lunge = null;
   }
@@ -273,9 +283,10 @@ export class Game {
   startLaser(x, y) {
     this.cancelBird();
     this.leaveBoxForPlay();
+    const toy = this.aboveFinger(x, y);
     this.laser.active = true;
-    this.laser.x = x;
-    this.laser.y = this.clampPlayY(y);
+    this.laser.x = toy.x;
+    this.laser.y = toy.y;
     this.lunge = null;
   }
 
@@ -294,17 +305,18 @@ export class Game {
   grabYarn(x, y) {
     this.cancelBird();
     this.leaveBoxForPlay();
-    if (!this.yarn) this.spawnYarn(x, this.room.ground - 16, 0, 0);
+    const toy = this.aboveFinger(x, y, 64);
+    if (!this.yarn) this.spawnYarn(toy.x, toy.y, 0, 0);
     this.yarn.held = true;
-    this.yarn.x = x;
-    this.yarn.y = this.clampPlayY(y);
+    this.yarn.x = toy.x;
+    this.yarn.y = toy.y;
     this.yarn.vx = 0;
     this.yarn.vy = 0;
     this.yarn.engaged = true;
   }
 
   spawnYarn(x, y, vx, vy) {
-    this.yarn = { x, y, vx, vy, r: 14, rot: 0, held: false, engaged: true, still: 0, batCd: 0 };
+    this.yarn = { x, y, vx, vy, r: 9, rot: 0, held: false, engaged: true, still: 0, batCd: 0 };
   }
 
   leaveBoxForPlay() {
@@ -367,6 +379,7 @@ export class Game {
     else this.updateAuto(dt, setHop);
 
     if (!hopSet) cat.hop += (0 - cat.hop) * Math.min(1, dt * 7);
+    this.updatePupil(dt);
     this.keepCatInRoom();
     cat.drawRot = (cat.m.bodyRot || 0) + Math.sin(cat.wigglePhase) * cat.wiggleAmp;
     this.updateEffects(dt);
@@ -436,6 +449,18 @@ export class Game {
       this.moods.happy = clamp01(this.moods.happy + (0.62 - this.moods.happy) * dt * 0.03);
     }
     if (this.config) this.config.mood = { ...this.moods };
+  }
+
+  updatePupil(dt) {
+    const cat = this.cat;
+    const sun = this.room.sun;
+    const inSun = Math.abs(cat.x - sun.x) < sun.rx * 0.9 && Math.abs(cat.hop) < 10;
+    let target = 0.4;
+    if (cat.asleep) target = 0.08;
+    else if (cat.excited > 0.4) target = 0.9;
+    else if (inSun && !cat.moving) target = 0.14;
+    if (cat.pupil == null) cat.pupil = target;
+    cat.pupil += (target - cat.pupil) * Math.min(1, dt * 4);
   }
 
   keepCatInRoom() {
@@ -1249,7 +1274,7 @@ export function renderPreview(ctx, config, w, h, time) {
     groundY: h * 0.8,
     hop: 0,
     facing: 1,
-    scale: Math.min(w / 230, h / 190) * 1.2,
+    scale: Math.min(w / 150, h / 130) * 1.05,
     app: appearanceFrom(config),
     m: clonePose("sit"),
     curl: 0,
@@ -1269,6 +1294,7 @@ export function renderPreview(ctx, config, w, h, time) {
     gazeX: 0.2,
     gazeY: -0.25,
     excited: 0,
+    pupil: 0.42,
     asleep: false,
     swat: 0,
     drawRot: 0,
