@@ -160,6 +160,12 @@ export function defaultCat() {
     eyes: "green",
     mute: false,
     mood: { playful: 0.48, sleepy: 0.3, happy: 0.66 },
+    bond: 0,
+    wear: 0,
+    unlockAll: false,
+    day: "",
+    goals: { birds: 0, scratch: 0, play: 0 },
+    goalBonus: {},
   };
 }
 
@@ -180,6 +186,8 @@ export function normalizeCat(raw) {
   const gender = raw.gender === "boy" ? "boy" : "girl";
   const hair = raw.hair === "long" ? "long" : "short";
   const mood = raw.mood || {};
+  const goals = raw.goals || {};
+  const bonus = raw.goalBonus || {};
   return {
     v: 1,
     name: cleanName(raw.name),
@@ -193,7 +201,33 @@ export function normalizeCat(raw) {
       sleepy: clampMood(mood.sleepy, base.mood.sleepy),
       happy: clampMood(mood.happy, base.mood.happy),
     },
+    bond: clampBond(raw.bond),
+    wear: clampMood(raw.wear, 0),
+    unlockAll: Boolean(raw.unlockAll),
+    day: typeof raw.day === "string" ? raw.day.slice(0, 12) : "",
+    goals: {
+      birds: clampCount(goals.birds),
+      scratch: clampCount(goals.scratch),
+      play: clampCount(goals.play),
+    },
+    goalBonus: {
+      birds: Boolean(bonus.birds),
+      scratch: Boolean(bonus.scratch),
+      play: Boolean(bonus.play),
+    },
   };
+}
+
+function clampCount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(9, Math.round(n)));
+}
+
+function clampBond(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n * 10) / 10));
 }
 
 function clampMood(value, fallback) {

@@ -31,15 +31,26 @@ const editBtn = document.querySelector("#edit");
 const tray = document.querySelector("#tray");
 const dock = document.querySelector("#dock");
 const trayToggle = document.querySelector("#tray-toggle");
-const topbar = document.querySelector("#topbar");
+const topbar = document.querySelector("#chrome");
 const bars = {
   playful: document.querySelector("#bar-play"),
   sleepy: document.querySelector("#bar-sleep"),
   happy: document.querySelector("#bar-happy"),
+  bond: document.querySelector("#bar-bond"),
 };
+const goalChip = document.querySelector("#goal-chip");
+const goOut = document.querySelector("#go-out");
+const callBirds = document.querySelector("#call-birds");
+const settingsEl = document.querySelector("#settings");
+const settingsOpen = document.querySelector("#settings-open");
+const settingsClose = document.querySelector("#settings-close");
+const unlockAllBtn = document.querySelector("#unlock-all");
+const goalList = document.querySelector("#goal-list");
+const bondReadout = document.querySelector("#bond-readout");
 
 const audio = new AudioBus();
 const game = new Game(roomCanvas, audio);
+game.onSave = () => persist();
 const draft = {
   name: "Miso",
   gender: "girl",
@@ -67,6 +78,13 @@ game.onHud = (hudState) => {
   setMeter(bars.playful, playful);
   setMeter(bars.sleepy, sleepy);
   setMeter(bars.happy, happy);
+  setMeter(bars.bond, Math.round(hudState.bond || 0));
+  paintGoals(hudState);
+  if (hudState.notice && hudState.notice !== lastNotice) {
+    lastNotice = hudState.notice;
+    toast.textContent = hudState.notice;
+    showPlayToast();
+  }
   hint.textContent = hudState.hint || "";
   for (const button of tray.querySelectorAll(".toy")) {
     const on = button.dataset.tool === hudState.tool;
@@ -214,14 +232,37 @@ function bindControls() {
   for (const button of tray.querySelectorAll(".toy")) {
     button.addEventListener("click", () => {
       audio.unlock();
+      if (button.dataset.tool === "scratch") {
+        game.startScratch();
+        return;
+      }
       const previous = game.tool;
       game.setTool(button.dataset.tool);
       if (game.tool && game.tool !== previous && !introduced.has(game.tool)) {
         introduced.add(game.tool);
+        toast.textContent = "Drag on the floor to play";
         showPlayToast();
       }
     });
   }
+  callBirds.addEventListener("click", () => {
+    audio.unlock();
+    game.callBirds();
+  });
+  goOut.addEventListener("click", () => {
+    audio.unlock();
+    if (game.scene === "out") game.requestInside();
+    else game.requestOutside();
+  });
+  goalChip.addEventListener("click", () => openSettings());
+  settingsOpen.addEventListener("click", () => openSettings());
+  settingsClose.addEventListener("click", () => {
+    settingsEl.hidden = true;
+  });
+  unlockAllBtn.addEventListener("click", () => {
+    game.setUnlockAll(!game.unlockAll);
+    paintGoals(game.goalSnapshot && { goals: game.goalSnapshot(), bond: game.bond, unlockAll: game.unlockAll, scene: game.scene, outsideOpen: game.outsideUnlocked() });
+  });
 
   trayToggle.addEventListener("click", () => {
     const open = dock.classList.toggle("collapsed");
@@ -258,7 +299,42 @@ const debugEl = document.querySelector("#touch-debug");
 
 function isControl(target) {
   if (!target || !target.closest) return false;
-  return Boolean(target.closest("#dock, #topbar, #picker, button, input, a, label"));
+  return Boolean(target.closest("#dock, #chrome, #settings, #picker, button, input, a, label"));
+}
+
+let lastNotice = "";
+
+function openSettings() {
+  settingsEl.hidden = false;
+  paintGoals({
+    goals: game.goalSnapshot(),
+    bond: game.bond,
+    unlockAll: game.unlockAll,
+    scene: game.scene,
+    outsideOpen: game.outsideUnlocked(),
+  });
+}
+
+function paintGoals(hudState) {
+  if (!hudState || !hudState.goals) return;
+  const next = hudState.goals.find((goal) => goal.have < goal.need) || hudState.goals[hudState.goals.length - 1];
+  const done = hudState.goals.every((goal) => goal.have >= goal.need);
+  goalChip.textContent = done ? "Today is complete" : `${next.label} ${Math.min(next.have, next.need)}/${next.need}`;
+  goOut.textContent = hudState.scene === "out" ? "Inside" : "Outside";
+  goOut.classList.toggle("is-locked", hudState.scene !== "out" && !hudState.outsideOpen);
+  if (!settingsEl.hidden) {
+    bondReadout.textContent = `Bond ${Math.round(hudState.bond || 0)} of 100. The porch opens at 5.`;
+    unlockAllBtn.setAttribute("aria-pressed", hudState.unlockAll ? "true" : "false");
+    unlockAllBtn.textContent = hudState.unlockAll ? "Everything is unlocked" : "Unlock everything";
+    goalList.replaceChildren(
+      ...hudState.goals.map((goal) => {
+        const item = document.createElement("li");
+        item.classList.toggle("done", goal.have >= goal.need);
+        item.textContent = `${goal.label} · ${Math.min(goal.have, goal.need)}/${goal.need}`;
+        return item;
+      })
+    );
+  }
 }
 
 function claimInput(source) {

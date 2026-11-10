@@ -91,9 +91,10 @@ export function paintCat(ctx, cat, time) {
   ctx.rotate(rot);
   ctx.translate(0, 24);
 
-  if (cat.back < 0.98) {
+  const scratch = Math.max(0, Math.min(1, cat.scratch || 0));
+  if (scratch < 0.98 && cat.back < 0.98) {
     ctx.save();
-    ctx.globalAlpha *= 1 - cat.back;
+    ctx.globalAlpha *= (1 - scratch) * (1 - cat.back);
     if (cat.curl < 0.98) {
       ctx.save();
       ctx.globalAlpha *= 1 - cat.curl;
@@ -108,10 +109,16 @@ export function paintCat(ctx, cat, time) {
     }
     ctx.restore();
   }
-  if (cat.back > 0.02) {
+  if (scratch < 0.98 && cat.back > 0.02) {
     ctx.save();
-    ctx.globalAlpha *= Math.min(1, cat.back);
+    ctx.globalAlpha *= (1 - scratch) * Math.min(1, cat.back);
     rolled(ctx, cat, time);
+    ctx.restore();
+  }
+  if (scratch > 0.02) {
+    ctx.save();
+    ctx.globalAlpha *= scratch;
+    scratching(ctx, cat, time);
     ctx.restore();
   }
   ctx.restore();
@@ -399,6 +406,7 @@ export function rumpAnchor(cat, time = 0) {
   const fluff = f * 9;
   const tuck = m.legTuck == null ? 1 : m.legTuck;
   if (cat.inBox) return { x: -9, y: 13, mode: "box" };
+  if ((cat.scratch || 0) > 0.72) return { x: -8, y: -22, mode: "scratch" };
   if ((cat.curl || 0) > 0.72) {
     const rx = 22 + f * 5;
     const ry = 16 + f * 3;
@@ -764,6 +772,63 @@ function collar(ctx) {
   ctx.beginPath();
   ctx.arc(2, 17.5, 2.1, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
+}
+
+function scratching(ctx, cat, time) {
+  const f = cat.app.hair === "long" ? 1 : 0;
+  const colors = tone(cat.app.coat);
+  const swing = Math.sin(cat.scratchPhase || time * 14);
+  const was = cat.scratch;
+  cat.scratch = Math.max(cat.scratch || 0, 0.85);
+  tail(ctx, cat, cat.m || {}, time, f, colors);
+  cat.scratch = was;
+  const hind = (x, footX) => {
+    ctx.strokeStyle = colors.mid;
+    ctx.lineWidth = 5 + f;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x, -18);
+    ctx.quadraticCurveTo(x - 2, -8, footX, 1);
+    ctx.stroke();
+    ctx.fillStyle = colors.light;
+    ctx.beginPath();
+    ctx.ellipse(footX, 2, 4.2 + f, 2.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  hind(-8, -7);
+  hind(2, 5);
+  ctx.beginPath();
+  ctx.ellipse(0, -34, 13 + f * 3, 20 + f, -0.15, 0, Math.PI * 2);
+  shade(ctx, -6, -52, 8, -16, colors.light, colors.mid, colors.dark);
+  ctx.fill();
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(0, -34, 13 + f * 3, 20 + f, -0.15, 0, Math.PI * 2);
+  ctx.clip();
+  patternBody(ctx, cat, -34, 0.2);
+  fur(ctx, 12, 4, -10, -48, 24, 28, 0.7, colors.deep, f ? 5 : 2.4, 0.18);
+  ctx.restore();
+  const reach = (y, lift) => {
+    const pawY = y + lift;
+    const pawX = 18 + f * 2;
+    ctx.strokeStyle = colors.mid;
+    ctx.lineWidth = 4 + f * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(4, y + 4);
+    ctx.quadraticCurveTo(7, pawY, pawX, pawY);
+    ctx.stroke();
+    ctx.fillStyle = colors.light;
+    ctx.beginPath();
+    ctx.ellipse(pawX + 1, pawY, 3.2, 2.3, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  reach(-48, swing * 4);
+  reach(-38, -swing * 4);
+  ctx.save();
+  ctx.translate(4, -54);
+  ctx.rotate(-0.15);
+  head(ctx, cat, time, f, colors);
   ctx.restore();
 }
 

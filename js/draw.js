@@ -51,6 +51,21 @@ export function layoutRoom(w, h, uiTop, uiBottom) {
     x: win.x + win.w * 0.58,
     y: win.y + win.h * 0.58,
   };
+  const couchH = Math.round(Math.min(84, Math.max(62, (ground - floorY) * 0.52)));
+  const couchW = Math.round(Math.min(108, Math.max(86, w * 0.26)));
+  const couch = {
+    x: 46,
+    y: Math.round(ground - couchH),
+    w: couchW,
+    h: couchH,
+  };
+  couch.scratchX = couch.x + couch.w + 10;
+  const door = {
+    x: Math.round(Math.min(w * 0.62, box.x - 64)),
+    y: Math.round(ground - 78),
+    w: 34,
+    h: 78,
+  };
   return {
     w,
     h,
@@ -60,6 +75,8 @@ export function layoutRoom(w, h, uiTop, uiBottom) {
     sun,
     box,
     feeder,
+    couch,
+    door,
     watchX: feeder.x - w * 0.04,
     napX: sun.x,
     boxX: box.x + box.w * 0.42,
@@ -87,7 +104,89 @@ export function drawRoom(ctx, room, time, birds, extras) {
   drawWindow(ctx, room, time, birds, extras);
   ctx.restore();
 
+  drawDoor(ctx, room.door, extras.outsideOpen);
+  drawCouch(ctx, room.couch, extras.wear || 0);
   drawBox(ctx, room.box);
+}
+
+export function layoutGarden(w, h, uiTop, uiBottom) {
+  const playTop = Math.max(8, uiTop + 4);
+  const playBottom = h - Math.max(0, uiBottom);
+  const playH = Math.max(120, playBottom - playTop);
+  const ground = Math.round(playTop + playH * 0.74);
+  const horizon = Math.round(playTop + playH * 0.28);
+  const flowers = [
+    { x: w * 0.3, y: ground - 16, kind: 0 },
+    { x: w * 0.44, y: ground - 6, kind: 1 },
+    { x: w * 0.58, y: ground - 20, kind: 2 },
+    { x: w * 0.7, y: ground - 8, kind: 3 },
+  ];
+  return {
+    w,
+    h,
+    playTop,
+    playBottom,
+    ground,
+    horizon,
+    flowers,
+    porchX: Math.round(w * 0.42),
+    tree: { x: Math.round(w * 0.8), y: horizon + 8 },
+    fenceY: Math.round(horizon + (ground - horizon) * 0.46),
+    door: { x: 12, y: ground - 78, w: 34, h: 78 },
+    watch: { x: Math.round(w * 0.72), y: horizon + 18 },
+  };
+}
+
+export function drawGarden(ctx, garden, time, extras) {
+  const { w, h, horizon, ground } = garden;
+  const sky = ctx.createLinearGradient(0, 0, 0, horizon + 40);
+  sky.addColorStop(0, "#8ecdf2");
+  sky.addColorStop(0.55, "#d7f1c4");
+  sky.addColorStop(1, "#b7d98a");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.fillStyle = "#fff8e8";
+  ctx.beginPath();
+  ctx.arc(w * 0.22, horizon * 0.42, 26, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,248,232,0.85)";
+  ctx.beginPath();
+  ctx.arc(w * 0.62, horizon * 0.28, 16, 0, Math.PI * 2);
+  ctx.arc(w * 0.68, horizon * 0.32, 12, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#8fbf62";
+  ctx.beginPath();
+  ctx.moveTo(0, horizon + 18);
+  ctx.quadraticCurveTo(w * 0.3, horizon - 10, w * 0.55, horizon + 16);
+  ctx.quadraticCurveTo(w * 0.8, horizon + 36, w, horizon + 8);
+  ctx.lineTo(w, ground);
+  ctx.lineTo(0, ground);
+  ctx.fill();
+
+  drawTree(ctx, garden.tree, time);
+  drawFence(ctx, garden);
+  ctx.fillStyle = "#7fba55";
+  ctx.fillRect(0, garden.fenceY + 10, w, ground - garden.fenceY);
+  for (const flower of garden.flowers) drawFlower(ctx, flower, time);
+  for (const bird of extras.birds || []) drawBird(ctx, bird, time);
+  for (const bug of extras.butterflies || []) drawButterfly(ctx, bug, time);
+
+  const porch = ctx.createLinearGradient(0, ground - 8, 0, h);
+  porch.addColorStop(0, "#e7c48a");
+  porch.addColorStop(1, "#c9955c");
+  ctx.fillStyle = porch;
+  ctx.fillRect(0, ground - 6, w, h - ground + 6);
+  ctx.strokeStyle = "rgba(120, 72, 36, 0.28)";
+  ctx.lineWidth = 2;
+  for (let x = 0; x < w; x += 28) {
+    ctx.beginPath();
+    ctx.moveTo(x, ground - 4);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+  drawDoor(ctx, garden.door, true, "In");
 }
 
 function drawFloor(ctx, room) {
@@ -381,6 +480,157 @@ function drawPawPrint(ctx, print) {
     ctx.fill();
   }
   ctx.restore();
+}
+
+function drawDoor(ctx, door, open, label = "Out") {
+  if (!door) return;
+  const { x, y, w, h } = door;
+  ctx.save();
+  ctx.fillStyle = "#f4e2cc";
+  ctx.strokeStyle = "#8d6244";
+  ctx.lineWidth = 2;
+  roundRect(ctx, x, y, w, h, 4);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = open ? "#b9ddf2" : "#d9c4ae";
+  ctx.fillRect(x + 4, y + 6, w - 8, h * 0.42);
+  ctx.strokeRect(x + 4, y + 6, w - 8, h * 0.42);
+  ctx.fillStyle = "#c9843a";
+  roundRect(ctx, x + 5, y + h - 28, w - 10, 20, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#6a4632";
+  ctx.font = "700 9px ui-rounded, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(label, x + w / 2, y + h - 14);
+  ctx.restore();
+}
+
+function drawCouch(ctx, couch, wear) {
+  if (!couch) return;
+  const { x, y, w, h } = couch;
+  ctx.save();
+  ctx.fillStyle = "rgba(90, 52, 32, 0.14)";
+  ctx.beginPath();
+  ctx.ellipse(x + w * 0.5, y + h - 2, w * 0.42, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#c96b4a";
+  ctx.strokeStyle = "#8a4634";
+  ctx.lineWidth = 2;
+  roundRect(ctx, x + 8, y + 16, w - 22, h - 22, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#e08968";
+  roundRect(ctx, x + 4, y + h * 0.42, w - 28, h * 0.38, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#b85a3e";
+  roundRect(ctx, x, y, 16, h - 6, 5);
+  ctx.fill();
+  ctx.stroke();
+  const armX = x + w - 20;
+  ctx.fillStyle = "#a84e36";
+  roundRect(ctx, armX, y + 8, 20, h - 14, 6);
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(255, 236, 220, 0.85)";
+  ctx.lineWidth = 1.4;
+  const marks = Math.round(Math.max(0, Math.min(1, wear)) * 5);
+  ctx.globalAlpha = 0.45 + wear * 0.5;
+  for (let i = 0; i < marks; i++) {
+    const yy = y + 18 + i * 8;
+    ctx.beginPath();
+    ctx.moveTo(armX + 4, yy);
+    ctx.lineTo(armX + 15, yy + 5);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawTree(ctx, tree, time) {
+  ctx.save();
+  ctx.fillStyle = "#8a5a3a";
+  ctx.fillRect(tree.x - 6, tree.y, 12, 78);
+  const sway = Math.sin(time * 0.7) * 3;
+  ctx.fillStyle = "#3f8f45";
+  ctx.beginPath();
+  ctx.arc(tree.x + sway, tree.y + 4, 28, 0, Math.PI * 2);
+  ctx.arc(tree.x - 18 + sway, tree.y + 16, 20, 0, Math.PI * 2);
+  ctx.arc(tree.x + 18 + sway, tree.y + 18, 20, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#67b15a";
+  ctx.beginPath();
+  ctx.arc(tree.x + sway, tree.y - 2, 16, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawFence(ctx, garden) {
+  const y = garden.fenceY;
+  ctx.save();
+  ctx.strokeStyle = "#f4efe4";
+  ctx.fillStyle = "#f7f1e6";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(18, y);
+  ctx.lineTo(garden.w - 8, y);
+  ctx.moveTo(18, y + 12);
+  ctx.lineTo(garden.w - 8, y + 12);
+  ctx.stroke();
+  for (let x = 24; x < garden.w; x += 28) {
+    roundRect(ctx, x, y - 10, 6, 36, 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawFlower(ctx, flower, time) {
+  const colors = ["#e86b8a", "#f2d04b", "#f4f0ea", "#c984d4"];
+  const bob = Math.sin(time * 1.3 + flower.x) * 1.2;
+  ctx.save();
+  ctx.strokeStyle = "#3f7a3a";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(flower.x, flower.y + 16);
+  ctx.quadraticCurveTo(flower.x + 2, flower.y + 6, flower.x, flower.y + bob);
+  ctx.stroke();
+  ctx.fillStyle = colors[flower.kind % colors.length];
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.ellipse(flower.x + Math.cos(a) * 4, flower.y + bob + Math.sin(a) * 4, 3, 2, a, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "#f2c14b";
+  ctx.beginPath();
+  ctx.arc(flower.x, flower.y + bob, 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawButterfly(ctx, bug, time) {
+  const flap = 0.45 + Math.abs(Math.sin(time * 10 + bug.phase)) * 0.7;
+  ctx.save();
+  ctx.translate(bug.x, bug.y);
+  ctx.fillStyle = bug.color;
+  ctx.globalAlpha = 0.9;
+  ctx.beginPath();
+  ctx.ellipse(-6, 0, 7 * flap, 4.2, -0.4, 0, Math.PI * 2);
+  ctx.ellipse(6, 0, 7 * flap, 4.2, 0.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = "#4a3428";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(0, -3);
+  ctx.lineTo(0, 3);
+  ctx.stroke();
+  ctx.restore();
+}
+
+export function hitRect(rect, x, y, pad = 10) {
+  if (!rect) return false;
+  return x >= rect.x - pad && x <= rect.x + rect.w + pad && y >= rect.y - pad && y <= rect.y + rect.h + pad;
 }
 
 export function drawBox(ctx, box) {

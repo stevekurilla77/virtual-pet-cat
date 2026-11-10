@@ -135,6 +135,12 @@ export class AudioBus {
     this.noiseBurst(0.18, 500, 0.06);
   }
 
+  scratch() {
+    if (!this.ctx) return;
+    this.noiseBurst(0.07, 2100, 0.055);
+    this.noiseBurst(0.05, 1400, 0.03);
+  }
+
   noiseBurst(duration, freq, peak) {
     if (!this.ctx || !this.noiseBuffer) return;
     const src = this.ctx.createBufferSource();

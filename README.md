@@ -30,7 +30,10 @@ Any static file server works. The page uses ES modules, so open it over `http://
 - Coats: orange tabby, brown tabby, gray, black, white, tuxedo, calico, tortoiseshell, Siamese, and cream.
 - The cat wanders, naps in the sunbeam, grooms, stretches, stares out the window, gets the zoomies, and sits in the box.
 - Birds land on the feeder. The cat chatters, wiggles, and pounces at the glass.
-- Toys, along the bottom: feather wand, laser dot, yarn ball, petting, and the box. Drag on the floor, or tap once to leave the toy there for a couple of seconds. A long rub on the belly gets a playful grab. The first time you pick each toy, a short note says to drag on the floor.
+- Toys, along the bottom: feather wand, laser dot, yarn ball, petting, the couch, and the box. Drag on the floor, or tap once to leave the toy there for a couple of seconds. A long rub on the belly gets a playful grab. The first time you pick a drag toy, a short note says to drag on the floor.
+- The couch is on the left. Tap it, or the scratch button, and the cat walks over, stands up, and scratches the arm. The fabric shows the marks. Sometimes the cat goes over on their own.
+- Birds calls a flock to the window. Outside, the same button puts birds on the fence.
+- A door on the left, or the Outside button, leads to the porch and garden once bond reaches 5. Settings can unlock everything sooner. Bond rises when you play, pet, watch birds, or scratch. Three small goals reset each day. All of that stays in `localStorage` on the phone.
 - Long-press the cat’s name three times to show a small touch readout: the last event, where it landed, the selected toy, and where the cat is headed. Long-press again three times to hide it.
 - Playful, sleepy, and happy shift what the cat does next.
 - Sound is synthesized in the browser. The speaker button mutes it. Press `M` on a keyboard.

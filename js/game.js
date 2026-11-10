@@ -1,4 +1,4 @@
-import { appearanceFrom, catHit, drawBoxCat, drawCat, drawEffects, drawFeather, drawLaser, drawRoom, drawYarn, layoutRoom, previewBackdrop, speciesAt, speciesCount } from "./draw.js";
+import { appearanceFrom, catHit, drawBoxCat, drawCat, drawEffects, drawFeather, drawGarden, drawLaser, drawRoom, drawYarn, hitRect, layoutGarden, layoutRoom, previewBackdrop, speciesAt, speciesCount } from "./draw.js";
 import { POSE_KEYS, POSES, clonePose } from "./poses.js";
 import { clamp, clamp01, len, weightedPick } from "./util.js";
 
@@ -44,6 +44,22 @@ export class Game {
     this.ui = { top: 56, bottom: 120 };
     this.hint = "";
     this.onHud = null;
+    this.onSave = null;
+    this.scene = "room";
+    this.fade = 0;
+    this.fadeTrip = null;
+    this.bond = 0;
+    this.wear = 0;
+    this.unlockAll = false;
+    this.day = "";
+    this.goals = { birds: 0, scratch: 0, play: 0 };
+    this.goalBonus = {};
+    this.playTime = 0;
+    this.notice = "";
+    this.noticeUntil = 0;
+    this.butterflies = [];
+    this.gardenBirds = [];
+    this.garden = layoutGarden(390, 700, 56, 120);
   }
 
   setConfig(config, intro) {
@@ -92,6 +108,8 @@ export class Game {
       wigglePhase: 0,
       wiggleAmp: 0,
       backKick: 0,
+      scratch: 0,
+      scratchPhase: 0,
       moving: false,
       boxAnchorX: 0,
       boxAnchorY: 0,
@@ -99,6 +117,10 @@ export class Game {
     this.auto = intro ? { name: "hello", phase: "sit", t: 0, meowed: false } : null;
     this.command = null;
     this.birdShow = null;
+    this.scene = "room";
+    this.fade = 0;
+    this.fadeTrip = null;
+    this.adoptProgress(config);
     this.resize();
   }
 
@@ -117,9 +139,11 @@ export class Game {
     this.canvas.height = Math.round(this.h * this.dpr);
     this.room = layoutRoom(this.w, this.h, this.ui.top, this.ui.bottom);
     this.room.reduced = this.reduced;
+    this.garden = layoutGarden(this.w, this.h, this.ui.top, this.ui.bottom);
+    this.seedGarden();
     if (!this.cat) return;
     this.cat.scale = clamp(Math.min(this.w / 165, this.h / 430), 1.25, 2.35);
-    this.cat.groundY = this.room.ground;
+    this.cat.groundY = this.scene === "out" ? this.garden.ground : this.room.ground;
     this.cat.x = clamp(this.cat.x, 36, this.w - 36);
   }
 
@@ -159,6 +183,11 @@ export class Game {
   }
 
   toggleBox() {
+    if (this.scene !== "room") {
+      this.notify("The box is inside");
+      this.emit();
+      return;
+    }
     this.audio.unlock();
     this.tool = "box";
     this.wand.active = false;
@@ -196,6 +225,12 @@ export class Game {
       tool: this.tool,
       hint: this.hint,
       inBox: Boolean(this.cat && (this.cat.inBox || (this.command && this.command.name === "box"))),
+      bond: this.bond,
+      scene: this.scene,
+      outsideOpen: this.outsideUnlocked(),
+      goals: this.goalSnapshot(),
+      notice: this.time < this.noticeUntil ? this.notice : "",
+      unlockAll: this.unlockAll,
     });
   }
 
@@ -203,7 +238,19 @@ export class Game {
     this.audio.unlock();
     this.pointer = { x, y, down: true, id, sx: x, sy: y, lx: x, ly: y, moved: 0 };
     if (!this.cat) return;
-    const boxHit = hitBox(this.room.box, x, y);
+    if (this.scene === "room" && (this.tool === null || this.tool === "scratch") && hitRect(this.room.couch, x, y, 12)) {
+      this.startScratch();
+      return;
+    }
+    if (this.tool === null && this.scene === "room" && hitRect(this.room.door, x, y, 8)) {
+      this.requestOutside();
+      return;
+    }
+    if (this.tool === null && this.scene === "out" && hitRect(this.garden.door, x, y, 8)) {
+      this.requestInside();
+      return;
+    }
+    const boxHit = this.scene === "room" && hitBox(this.room.box, x, y);
     const direct = catHit(this.cat, x, y);
     const lifted = this.aboveFinger(x, y, 48);
     const raised = catHit(this.cat, lifted.x, lifted.y);
@@ -309,10 +356,13 @@ export class Game {
   }
 
   floorMinX() {
-    return 96;
+    if (this.scene === "out") return 48;
+    const couch = this.room && this.room.couch;
+    return couch ? couch.x + couch.w - 20 : 96;
   }
 
   floorMaxX() {
+    if (this.scene === "out") return Math.max(this.floorMinX() + 24, this.w - 70);
     return Math.max(this.floorMinX() + 24, Math.min(this.w - 96, this.room.box.x - 28));
   }
 
@@ -431,9 +481,12 @@ export class Game {
 
     this.updateBlink(dt);
     this.updateEars(dt);
+    this.rollDay();
     this.updateBirds(dt);
+    this.updateGardenLife(dt);
     this.updateYarn(dt);
     this.updateMoodDrift(dt);
+    this.updateBond(dt);
 
     const boxCommand = this.command && (this.command.name === "box" || this.command.name === "outbox");
     if (this.toyHold && this.time > this.toyHold && !this.pointer.down) {
@@ -448,8 +501,10 @@ export class Game {
     else if (this.pet.touching) this.updatePetHold(dt);
     else if (boxCommand) this.updateCommand(dt, setHop);
     else if (this.yarn && this.yarn.engaged) this.updateYarnChase(dt, setHop);
-    else if (this.birdShow) this.updateBirdShow(dt, setHop);
+    else if (this.fadeTrip) this.updateFade(dt);
+    else if (this.birdShow && this.scene === "room") this.updateBirdShow(dt, setHop);
     else if (this.command) this.updateCommand(dt, setHop);
+    else if (this.scene === "out") this.updateOutside(dt, setHop);
     else this.updateAuto(dt, setHop);
 
     if (!hopSet) cat.hop += (0 - cat.hop) * Math.min(1, dt * 7);
@@ -461,7 +516,7 @@ export class Game {
     cat.drawRot = (cat.m.bodyRot || 0) + Math.sin(cat.wigglePhase) * cat.wiggleAmp;
     this.updateEffects(dt);
     this.decayPrints(dt);
-    if (this.maybeNoticeBird()) this.startBirdShow();
+    if (this.scene === "room" && this.maybeNoticeBird()) this.startBirdShow();
     this.emit();
   }
 
@@ -543,8 +598,15 @@ export class Game {
   keepCatInRoom() {
     const cat = this.cat;
     if (!cat || cat.inBox) return;
+    if (this.scene === "out") {
+      cat.groundY = this.garden.ground;
+      cat.x = clamp(cat.x, 46, this.w - 46);
+      return;
+    }
+    cat.groundY = this.room.ground;
     const entering = this.command && (this.command.name === "box" || this.command.name === "outbox");
-    const minX = this.floorMinX();
+    const scratching = this.command && this.command.name === "scratch";
+    const minX = scratching ? this.room.couch.scratchX - 4 : this.floorMinX();
     const maxX = entering ? Math.min(this.w - 48, this.room.box.x + this.room.box.w * 0.2) : this.floorMaxX();
     cat.x = clamp(cat.x, minX, Math.max(minX + 20, maxX));
   }
@@ -560,8 +622,10 @@ export class Game {
     for (const key of POSE_KEYS) m[key] += (target[key] - m[key]) * k;
     const curlT = this.poseName === "curl" ? 1 : 0;
     const backT = this.poseName === "back" ? 1 : 0;
+    const scratchT = this.poseName === "scratch" ? 1 : 0;
     this.cat.curl += (curlT - this.cat.curl) * Math.min(1, dt * 5);
     this.cat.back += (backT - this.cat.back) * Math.min(1, dt * 7);
+    this.cat.scratch += (scratchT - (this.cat.scratch || 0)) * Math.min(1, dt * 6);
   }
 
   moveTo(x, speed, dt, stop = 3.5) {
@@ -808,6 +872,14 @@ export class Game {
     const cat = this.cat;
     const cmd = this.command;
     cmd.t += dt;
+    if (cmd.name === "scratch") {
+      this.updateScratch(dt, setHop);
+      return;
+    }
+    if (cmd.name === "leave" || cmd.name === "comein") {
+      this.updateTrip(dt);
+      return;
+    }
     if (cmd.name === "box") {
       if (cmd.phase === "go") {
         const arrived = this.moveTo(this.room.boxX, 110, dt);
@@ -877,7 +949,7 @@ export class Game {
   maybeNoticeBird() {
     if (this.birdShow || this.birdNoticed) return false;
     if (this.wand.active || this.laser.active || this.pet.touching || this.grab > 0) return false;
-    if (this.command && this.command.name === "box") return false;
+    if (this.command) return false;
     if (this.yarn && this.yarn.engaged && (this.yarn.held || Math.hypot(this.yarn.vx, this.yarn.vy) > 40)) return false;
     return this.birds.some((bird) => bird.state === "perch" || bird.state === "peck");
   }
@@ -915,6 +987,11 @@ export class Game {
       cat.gazeY = -1.4;
       if (show.t > 0.45) this.nextBird(show, "chatter");
     } else if (show.phase === "chatter") {
+      if (!show.credited) {
+        show.credited = true;
+        const perched = this.birds.filter((bird) => bird.state === "perch" || bird.state === "peck" || bird.state === "fly").length;
+        this.creditBirds(Math.max(1, perched));
+      }
       this.desiredPose("sit");
       cat.mouth = Math.sin(this.time * 28) > 0 ? "chatter" : "none";
       cat.tailAmp = 16;
@@ -1132,6 +1209,11 @@ export class Game {
         this.moods.sleepy = clamp01(this.moods.sleepy + dt * 0.04);
         if (auto.t > 1.5) finish();
       }
+    } else if (auto.name === "scratch") {
+      this.command = { name: "scratch", phase: "go", t: 0, credited: false };
+      this.auto = null;
+      this.updateCommand(dt, setHop);
+      return;
     } else if (auto.name === "box") {
       if (auto.phase === "start") {
         this.command = { name: "box", phase: "go", t: 0 };
@@ -1155,6 +1237,7 @@ export class Game {
       window: 0.62 + (1 - m.playful) * 0.25,
       zoomies: m.playful > 0.55 ? (m.playful - 0.4) * 3.3 : 0.08,
       box: 0.32 + m.sleepy * 0.4,
+      scratch: 0.34,
     };
     if (this.lastAuto && weights[this.lastAuto] != null) weights[this.lastAuto] *= 0.22;
     const name = weightedPick(weights);
@@ -1292,13 +1375,418 @@ export class Game {
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.imageSmoothingEnabled = true;
-    drawRoom(ctx, this.room, this.time, this.birds, { glass: this.glass, flash: this.flash, prints: this.prints });
+    if (this.scene === "out") {
+      drawGarden(ctx, this.garden, this.time, { birds: this.gardenBirds, butterflies: this.butterflies });
+    } else {
+      drawRoom(ctx, this.room, this.time, this.birds, {
+        glass: this.glass,
+        flash: this.flash,
+        prints: this.prints,
+        wear: this.wear,
+        outsideOpen: this.outsideUnlocked(),
+      });
+    }
     if (this.cat && this.cat.inBox) drawBoxCat(ctx, this.cat, this.room.box, this.time);
     if (this.yarn) drawYarn(ctx, this.yarn);
     if (this.cat && !this.cat.inBox) drawCat(ctx, this.cat, this.time);
     if (this.tool === "wand") drawFeather(ctx, this.wand.x, this.wand.y, this.time);
     if (this.tool === "laser") drawLaser(ctx, this.laser.x, this.laser.y, this.time);
     drawEffects(ctx, this.effects);
+    if (this.fade > 0.001) {
+      ctx.fillStyle = `rgba(255, 214, 160, ${Math.min(1, this.fade)})`;
+      ctx.fillRect(0, 0, this.w, this.h);
+    }
+  }
+
+  outsideUnlocked() {
+    return Boolean(this.unlockAll) || this.bond >= 5;
+  }
+
+  adoptProgress(config) {
+    const goals = config.goals || {};
+    this.bond = Number(config.bond) || 0;
+    this.wear = Number(config.wear) || 0;
+    this.unlockAll = Boolean(config.unlockAll);
+    this.day = config.day || "";
+    this.goals = {
+      birds: goals.birds || 0,
+      scratch: goals.scratch || 0,
+      play: goals.play || 0,
+    };
+    this.goalBonus = { ...(config.goalBonus || {}) };
+    this.rollDay();
+  }
+
+  rollDay() {
+    const day = todayKey();
+    if (this.day === day) return;
+    this.day = day;
+    this.goals = { birds: 0, scratch: 0, play: 0 };
+    this.goalBonus = {};
+    this.playTime = 0;
+    this.syncProgress(true);
+  }
+
+  syncProgress(save) {
+    if (!this.config) return;
+    this.config.bond = this.bond;
+    this.config.wear = this.wear;
+    this.config.unlockAll = this.unlockAll;
+    this.config.day = this.day;
+    this.config.goals = { ...this.goals };
+    this.config.goalBonus = { ...this.goalBonus };
+    this.config.mood = { ...this.moods };
+    if (save) this.flushSave();
+    else this.dirty = true;
+  }
+
+  flushSave() {
+    this.dirty = false;
+    this.savedAt = this.time;
+    if (this.onSave) this.onSave();
+  }
+
+  bumpBond(amount) {
+    const next = clamp(Math.round((this.bond + amount) * 10) / 10, 0, 100);
+    if (next === this.bond) return;
+    this.bond = next;
+    this.syncProgress(false);
+  }
+
+  creditBirds(count) {
+    const room = 3 - (this.goals.birds || 0);
+    const add = Math.max(0, Math.min(room, count));
+    if (add <= 0) return;
+    this.goals.birds += add;
+    this.bumpBond(1.5 * add);
+    this.finishGoals();
+  }
+
+  finishGoals() {
+    const needs = { birds: 3, scratch: 1, play: 1 };
+    for (const key of Object.keys(needs)) {
+      if (!this.goalBonus[key] && this.goals[key] >= needs[key]) {
+        this.goalBonus[key] = true;
+        this.bond = clamp(Math.round((this.bond + 4) * 10) / 10, 0, 100);
+      }
+    }
+    this.syncProgress(true);
+  }
+
+  goalSnapshot() {
+    return [
+      { id: "birds", label: "Watch 3 birds", have: this.goals.birds || 0, need: 3 },
+      { id: "scratch", label: "Scratch the couch", have: this.goals.scratch || 0, need: 1 },
+      { id: "play", label: "Play with a toy", have: this.goals.play || 0, need: 1 },
+    ];
+  }
+
+  updateBond(dt) {
+    const playing = this.wand.active || this.laser.active || (this.yarn && this.yarn.engaged && !this.yarn.held) || this.pet.touching;
+    if (playing) {
+      this.bumpBond(dt * (this.pet.touching ? 0.55 : 0.32));
+      if (this.goals.play < 1) {
+        this.playTime += dt;
+        if (this.playTime > 1) {
+          this.goals.play = 1;
+          this.finishGoals();
+        }
+      }
+    }
+    if (this.dirty && this.time - (this.savedAt || 0) > 1.2) this.flushSave();
+  }
+
+  notify(text) {
+    this.notice = text;
+    this.noticeUntil = this.time + 2.1;
+    this.hint = text;
+  }
+
+  setUnlockAll(on) {
+    this.unlockAll = Boolean(on);
+    this.syncProgress(true);
+    this.emit();
+  }
+
+  callBirds() {
+    this.audio.unlock();
+    if (this.scene === "out") {
+      this.spawnGardenBirds();
+      this.notify("Birds on the fence");
+      this.emit();
+      return;
+    }
+    if (this.command && this.command.name === "scratch") this.command = null;
+    this.auto = { name: "sit", phase: "start", t: 0 };
+    this.birds = [];
+    this.birdNoticed = false;
+    this.spawnFlock();
+    this.birdTimer = 22;
+    this.notify("Birds are coming");
+    this.emit();
+  }
+
+  startScratch() {
+    if (this.scene !== "room") {
+      this.notify("The couch is inside");
+      this.emit();
+      return;
+    }
+    this.cancelBird();
+    this.leaveBoxForPlay();
+    this.wand.active = false;
+    this.laser.active = false;
+    if (this.yarn) {
+      this.yarn.engaged = false;
+      this.yarn.held = false;
+    }
+    this.auto = null;
+    this.fadeTrip = null;
+    this.command = { name: "scratch", phase: "go", t: 0, credited: false, strokes: 0 };
+    this.notify("Off to the couch");
+    this.emit();
+  }
+
+  requestOutside() {
+    if (this.fadeTrip || this.scene === "out") return;
+    if (!this.outsideUnlocked()) {
+      this.notify("A little more time together first");
+      this.emit();
+      return;
+    }
+    this.cancelBird();
+    this.leaveBoxForPlay();
+    this.wand.active = false;
+    this.laser.active = false;
+    if (this.yarn) this.yarn.engaged = false;
+    this.auto = null;
+    this.command = { name: "leave", phase: "go", t: 0 };
+    this.emit();
+  }
+
+  requestInside() {
+    if (this.fadeTrip || this.scene !== "out") return;
+    this.wand.active = false;
+    this.laser.active = false;
+    if (this.yarn) this.yarn.engaged = false;
+    this.auto = null;
+    this.command = { name: "comein", phase: "go", t: 0 };
+    this.emit();
+  }
+
+  updateScratch(dt, setHop) {
+    const cat = this.cat;
+    const cmd = this.command;
+    const spot = this.room.couch.scratchX;
+    if (cmd.phase === "go") {
+      const arrived = this.moveTo(spot, 120, dt, 6);
+      this.desiredPose(arrived ? "sit" : "walk");
+      if (arrived) {
+        cat.facing = -1;
+        cat.x = spot;
+        cmd.phase = "rise";
+        cmd.t = 0;
+      }
+    } else if (cmd.phase === "rise") {
+      cat.facing = -1;
+      cat.x = spot;
+      this.desiredPose("scratch");
+      if ((cat.scratch || 0) > 0.72 || cmd.t > 0.45) {
+        cmd.phase = "scratch";
+        cmd.t = 0;
+      }
+    } else if (cmd.phase === "scratch") {
+      cat.facing = -1;
+      cat.x = spot;
+      this.desiredPose("scratch");
+      cat.scratchPhase = (cat.scratchPhase || 0) + dt * 16;
+      cat.excited = 0.45;
+      cat.tailAmp = 12;
+      cat.tailSpeed = 3.2;
+      const strokes = Math.floor(cmd.t / 0.18);
+      if (strokes > cmd.strokes) {
+        cmd.strokes = strokes;
+        this.audio.scratch();
+        this.wear = clamp01(this.wear + 0.04);
+      }
+      if (!cmd.credited && cmd.t > 0.35) {
+        cmd.credited = true;
+        this.goals.scratch = Math.min(9, (this.goals.scratch || 0) + 1);
+        this.bumpBond(3);
+        this.finishGoals();
+      }
+      if (cmd.t > 2.6) {
+        cmd.phase = "done";
+        cmd.t = 0;
+        this.syncProgress(true);
+      }
+    } else {
+      this.desiredPose("sit");
+      if (cmd.t > 0.4) this.command = null;
+    }
+    this.lerpPose(dt);
+    void setHop;
+  }
+
+  updateTrip(dt) {
+    const cat = this.cat;
+    const cmd = this.command;
+    const leaving = cmd.name === "leave";
+    const spot = leaving ? this.room.door.x - 6 : this.garden.door.x + 48;
+    const arrived = this.moveTo(spot, 120, dt, 10);
+    this.desiredPose(arrived ? "sit" : "walk");
+    if (leaving) cat.facing = 1;
+    if (arrived && cmd.t > 0.18) {
+      this.command = null;
+      this.fadeTrip = { dest: leaving ? "out" : "room", t: 0, phase: "out" };
+    }
+    this.lerpPose(dt);
+  }
+
+  updateFade(dt) {
+    const trip = this.fadeTrip;
+    if (!trip) return;
+    trip.t += dt;
+    this.desiredPose("sit");
+    if (trip.phase === "out") {
+      this.fade = Math.min(1, trip.t / 0.36);
+      if (trip.t >= 0.38) {
+        this.scene = trip.dest;
+        this.cat.inBox = false;
+        this.cat.x = trip.dest === "out" ? this.garden.porchX : this.room.napX;
+        this.cat.groundY = trip.dest === "out" ? this.garden.ground : this.room.ground;
+        this.cat.facing = 1;
+        if (trip.dest === "out") this.spawnGardenBirds();
+        trip.phase = "in";
+        trip.t = 0;
+      }
+    } else {
+      this.fade = Math.max(0, 1 - trip.t / 0.4);
+      if (trip.t >= 0.42) {
+        this.fade = 0;
+        this.fadeTrip = null;
+        this.auto = null;
+      }
+    }
+    this.lerpPose(dt);
+  }
+
+  seedGarden() {
+    const colors = ["#f4a0c0", "#f2d04b", "#7ec8f0"];
+    if (this.butterflies.length === 3) {
+      this.butterflies.forEach((bug, i) => {
+        const flower = this.garden.flowers[i];
+        bug.homeX = flower.x;
+        bug.homeY = flower.y - 58;
+      });
+      return;
+    }
+    this.butterflies = this.garden.flowers.slice(0, 3).map((flower, i) => ({
+      x: flower.x,
+      y: flower.y - 58,
+      homeX: flower.x,
+      homeY: flower.y - 58,
+      phase: i * 1.7,
+      color: colors[i],
+    }));
+  }
+
+  updateGardenLife(dt) {
+    for (const bug of this.butterflies) {
+      bug.phase += dt * (this.reduced ? 0.35 : 1.5);
+      bug.x = bug.homeX + Math.sin(bug.phase) * 26;
+      bug.y = bug.homeY + Math.cos(bug.phase * 0.8) * 12;
+    }
+    for (const bird of this.gardenBirds) {
+      bird.peckT = Math.max(0, (bird.peckT || 0) - dt);
+      bird.peckIn -= dt;
+      if (bird.peckIn <= 0) {
+        bird.state = "peck";
+        bird.peckT = 0.2;
+        bird.peckIn = 0.8 + Math.random();
+      } else if (bird.peckT <= 0) bird.state = "perch";
+    }
+  }
+
+  spawnGardenBirds() {
+    const spots = [this.garden.w * 0.36, this.garden.w * 0.52, this.garden.watch.x];
+    this.gardenBirds = spots.map((x, i) => ({
+      spec: speciesAt(i + 1),
+      x,
+      y: this.garden.fenceY - 6,
+      dir: i % 2 ? 1 : -1,
+      state: "perch",
+      phase: i,
+      peckIn: 0.5 + i * 0.25,
+      peckT: 0,
+    }));
+  }
+
+  updateOutside(dt, setHop) {
+    if (!this.auto || this.auto.where !== "out") this.chooseOutside();
+    const cat = this.cat;
+    const auto = this.auto;
+    auto.t += dt;
+    if (auto.name === "sit") {
+      this.desiredPose("sit");
+      if (auto.t > 2.2) this.auto = null;
+    } else if (auto.name === "sniff") {
+      if (auto.phase === "start") {
+        const flower = this.garden.flowers[Math.floor(Math.random() * this.garden.flowers.length)];
+        auto.target = flower.x;
+        auto.lookY = flower.y;
+        auto.phase = "go";
+        auto.t = 0;
+      }
+      const arrived = this.moveTo(auto.target, 80, dt, 12);
+      this.desiredPose(arrived ? "stalk" : "walk");
+      if (arrived) {
+        this.lookAt(auto.target, auto.lookY);
+        cat.gazeY = 0.9;
+        if (auto.t > 2.1) this.auto = null;
+      }
+    } else if (auto.name === "chase") {
+      if (auto.phase === "start") {
+        auto.bug = Math.floor(Math.random() * this.butterflies.length);
+        auto.phase = "run";
+        auto.t = 0;
+      }
+      const bug = this.butterflies[auto.bug] || this.butterflies[0];
+      const arrived = this.moveTo(bug.x, 210, dt, 16);
+      this.desiredPose(arrived ? "pounce" : "run");
+      cat.excited = 0.85;
+      this.lookAt(bug.x, bug.y);
+      if (arrived) {
+        bug.homeX = clamp(bug.homeX + (Math.random() < 0.5 ? -46 : 46), 70, this.w - 80);
+        this.desiredPose("sit");
+        if (auto.t > 0.35) this.auto = null;
+      } else if (auto.t > 4.2) this.auto = null;
+    } else if (auto.name === "watch") {
+      if (!auto.credited) {
+        auto.credited = true;
+        if (this.gardenBirds.length === 0) this.spawnGardenBirds();
+        this.creditBirds(1);
+      }
+      const arrived = this.moveTo(this.garden.porchX, 90, dt);
+      this.desiredPose(arrived ? "sit" : "walk");
+      this.lookAt(this.garden.watch.x, this.garden.fenceY);
+      cat.gazeY = -1.1;
+      if (arrived && Math.sin(this.time * 16) > 0.35) {
+        cat.mouth = "chatter";
+        if (!auto.chirped || this.time - auto.chirped > 0.75) {
+          auto.chirped = this.time;
+          this.audio.chirp();
+        }
+      }
+      if (auto.t > 3.4) this.auto = null;
+    }
+    this.lerpPose(dt);
+    void setHop;
+  }
+
+  chooseOutside() {
+    const name = weightedPick({ sit: 1, sniff: 1.15, chase: 1.05, watch: 0.85 });
+    this.auto = { name, where: "out", phase: "start", t: 0 };
   }
 
   // Test and tuning hooks. They are not shown in the room.
@@ -1381,6 +1869,11 @@ export function renderPreview(ctx, config, w, h, time) {
   };
   cat.m.stride = 0;
   drawCat(ctx, cat, time);
+}
+
+function todayKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 }
 
 function hitBox(box, x, y) {

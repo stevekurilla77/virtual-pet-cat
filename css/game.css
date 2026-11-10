@@ -99,7 +99,7 @@ button:focus-visible, input:focus-visible {
 }
 
 .mood {
-  width: 36px;
+  width: 30px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -129,6 +129,71 @@ button:focus-visible, input:focus-visible {
 #bar-play > span { background: #f0a03a; }
 #bar-sleep > span { background: #7d90d6; }
 #bar-happy > span { background: #e86b8a; }
+#bar-bond > span { background: #e07058; }
+
+#chrome { pointer-events: none; }
+
+#placebar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 0 8px 4px;
+  pointer-events: none;
+}
+
+#placebar button, #settings button {
+  pointer-events: auto;
+  touch-action: none;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 248, 242, 0.94);
+  color: var(--ink);
+  min-height: 28px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#goal-chip {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#go-out.is-locked { opacity: 0.55; }
+
+#settings {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: end center;
+  padding: 16px;
+  background: rgba(74, 52, 40, 0.28);
+  pointer-events: auto;
+}
+
+#settings[hidden] { display: none !important; }
+
+#settings .panel {
+  width: min(100%, 360px);
+  margin-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  padding: 16px;
+  border-radius: 18px;
+  background: #fff8f2;
+  color: var(--ink);
+  box-shadow: 0 12px 40px rgba(74, 52, 40, 0.2);
+}
+
+#settings h2 { margin: 0 0 4px; font-size: 18px; }
+#bond-readout { margin: 0 0 10px; color: var(--ink-soft); }
+#goal-list { margin: 0 0 12px; padding: 0; list-style: none; }
+#goal-list li { padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
+#goal-list li.done { color: #3f7a3a; }
+#settings button { width: 100%; margin-top: 8px; }
+#unlock-all[aria-pressed="true"] { box-shadow: 0 0 0 2px #c4622a; }
 
 .iconbtn {
   pointer-events: auto;
