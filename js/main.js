@@ -217,6 +217,9 @@ function bindControls() {
     });
   }
 
+  dock.addEventListener("pointerdown", (event) => event.stopPropagation());
+  dock.addEventListener("pointerup", (event) => event.stopPropagation());
+
   trayToggle.addEventListener("click", () => {
     const open = dock.classList.toggle("collapsed");
     trayToggle.setAttribute("aria-expanded", open ? "false" : "true");
@@ -239,7 +242,11 @@ function bindControls() {
 function onPointerDown(event) {
   if (!game.running || event.button > 0) return;
   event.preventDefault();
-  roomCanvas.setPointerCapture(event.pointerId);
+  try {
+    roomCanvas.setPointerCapture(event.pointerId);
+  } catch (error) {
+    // A cancelled or synthetic touch has no active pointer. The drag still tracks.
+  }
   const point = localPoint(event);
   game.pointerDown(point.x, point.y, event.pointerId);
   hud.classList.toggle("is-playing", game.pointer.down);

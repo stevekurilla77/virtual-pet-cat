@@ -125,17 +125,34 @@ export class Game {
 
   setTool(tool) {
     this.audio.unlock();
-    if (tool === "box") {
-      this.toggleBox();
-      return;
-    }
-    this.tool = this.tool === tool ? null : tool;
+    const next = this.tool === tool ? null : tool;
+    this.tool = next;
     this.wand.active = false;
     this.laser.active = false;
-    if (this.tool !== "yarn") {
-      /* keep the ball where it lies */
-    } else if (!this.yarn) {
-      this.spawnYarn(this.w * 0.42, this.room.ground - 18, 0, 0);
+    this.pet.touching = false;
+    if (this.yarn) {
+      this.yarn.engaged = false;
+      this.yarn.held = false;
+      this.yarn.vx = 0;
+      this.yarn.vy = 0;
+    }
+    if (this.command && (this.command.name === "box" || this.command.name === "outbox")) {
+      this.command = null;
+    }
+    if (next === "wand" || next === "laser" || next === "yarn") {
+      const spot = this.nearCat();
+      if (next === "wand") {
+        this.wand.x = spot.x;
+        this.wand.y = spot.y;
+      } else if (next === "laser") {
+        this.laser.x = spot.x;
+        this.laser.y = spot.y;
+      } else if (!this.yarn) {
+        this.spawnYarn(spot.x, spot.y, 0, 0, false);
+      } else {
+        this.yarn.x = spot.x;
+        this.yarn.y = spot.y;
+      }
     }
     this.syncHint();
     this.emit();
@@ -185,7 +202,7 @@ export class Game {
   pointerDown(x, y, id) {
     this.audio.unlock();
     this.pointer = { x, y, down: true, id, sx: x, sy: y, lx: x, ly: y, moved: 0 };
-    if (!this.cat) return;
+    if (!this.cat || y >= this.room.playBottom - 2) return;
     const boxHit = hitBox(this.room.box, x, y);
     const petPoint = this.aboveFinger(x, y, 48);
     const hit = this.tool === "pet" ? catHit(this.cat, petPoint.x, petPoint.y) : catHit(this.cat, x, y);
@@ -240,7 +257,9 @@ export class Game {
   }
 
   pointerUp() {
+    const wasDown = this.pointer.down;
     this.pointer.down = false;
+    if (!wasDown) return;
     if (this.wand.active) this.wand.active = false;
     if (this.laser.active) this.laser.active = false;
     this.pet.touching = false;
@@ -261,12 +280,32 @@ export class Game {
     this.pet.belly = 0;
   }
 
+  floorMinX() {
+    return 96;
+  }
+
+  floorMaxX() {
+    return Math.max(this.floorMinX() + 24, Math.min(this.w - 96, this.room.box.x - 28));
+  }
+
+  placeOnFloor(x, y) {
+    return {
+      x: clamp(x, this.floorMinX(), this.floorMaxX()),
+      y: clamp(y, this.room.floorY + 28, this.room.ground - 8),
+    };
+  }
+
+  nearCat() {
+    const cat = this.cat;
+    return this.placeOnFloor(cat.x + cat.facing * 54, this.room.ground - 18);
+  }
+
   clampPlayY(y) {
     return clamp(y, this.room.playTop + 10, this.room.playBottom - 8);
   }
 
   aboveFinger(x, y, lift = 84) {
-    return { x, y: this.clampPlayY(y - lift) };
+    return this.placeOnFloor(x, y - lift);
   }
 
   startWand(x, y) {
@@ -306,7 +345,7 @@ export class Game {
     this.cancelBird();
     this.leaveBoxForPlay();
     const toy = this.aboveFinger(x, y, 64);
-    if (!this.yarn) this.spawnYarn(toy.x, toy.y, 0, 0);
+    if (!this.yarn) this.spawnYarn(toy.x, toy.y, 0, 0, true);
     this.yarn.held = true;
     this.yarn.x = toy.x;
     this.yarn.y = toy.y;
@@ -315,8 +354,9 @@ export class Game {
     this.yarn.engaged = true;
   }
 
-  spawnYarn(x, y, vx, vy) {
-    this.yarn = { x, y, vx, vy, r: 9, rot: 0, held: false, engaged: true, still: 0, batCd: 0 };
+  spawnYarn(x, y, vx, vy, engaged = false) {
+    const spot = this.placeOnFloor(x, y);
+    this.yarn = { x: spot.x, y: spot.y, vx, vy, r: 9, rot: 0, held: false, engaged, still: 0, batCd: 0 };
   }
 
   leaveBoxForPlay() {
@@ -470,8 +510,8 @@ export class Game {
     const cat = this.cat;
     if (!cat || cat.inBox) return;
     const entering = this.command && (this.command.name === "box" || this.command.name === "outbox");
-    const minX = 64;
-    const maxX = entering ? this.w - 40 : Math.min(this.w - 72, this.room.box.x - 4);
+    const minX = this.floorMinX();
+    const maxX = entering ? Math.min(this.w - 48, this.room.box.x + this.room.box.w * 0.2) : this.floorMaxX();
     cat.x = clamp(cat.x, minX, Math.max(minX + 20, maxX));
   }
 
@@ -569,8 +609,8 @@ export class Game {
     cat.tailSpeed = 8;
     this.lookAt(this.laser.x, this.laser.y);
     const above = this.laser.y < this.room.ground - 36;
-    const goal = this.laser.x + (this.laser.x >= cat.x ? 18 : -18);
-    const arrived = this.moveTo(above ? this.laser.x : goal, 250, dt);
+    const goal = this.placeOnFloor(this.laser.x + (this.laser.x >= cat.x ? 18 : -18), this.room.ground - 12);
+    const arrived = this.moveTo(above ? this.placeOnFloor(this.laser.x, this.room.ground - 12).x : goal.x, 250, dt);
     if (above && Math.abs(cat.x - this.laser.x) < 28) {
       const reach = clamp(this.room.ground - this.laser.y, 0, 92);
       setHop(-reach * 0.85);
@@ -709,7 +749,8 @@ export class Game {
     cat.tailAmp = 11;
     cat.tailSpeed = 4;
     const airborne = yarn.y < this.room.ground - 30;
-    const arrived = this.moveTo(yarn.x, airborne ? 190 : 155, dt, 30);
+    const chase = this.placeOnFloor(yarn.x, this.room.ground - 12);
+    const arrived = this.moveTo(chase.x, airborne ? 190 : 155, dt, 30);
     cat.facing = yarn.x >= cat.x ? 1 : -1;
     if (airborne && Math.abs(cat.x - yarn.x) < 36) {
       setHop(-Math.min(70, this.room.ground - yarn.y));
@@ -1221,8 +1262,8 @@ export class Game {
     if (this.cat && this.cat.inBox) drawBoxCat(ctx, this.cat, this.room.box, this.time);
     if (this.yarn) drawYarn(ctx, this.yarn);
     if (this.cat && !this.cat.inBox) drawCat(ctx, this.cat, this.time);
-    if (this.wand.active) drawFeather(ctx, this.wand.x, this.wand.y, this.time);
-    if (this.laser.active) drawLaser(ctx, this.laser.x, this.laser.y, this.time);
+    if (this.tool === "wand") drawFeather(ctx, this.wand.x, this.wand.y, this.time);
+    if (this.tool === "laser") drawLaser(ctx, this.laser.x, this.laser.y, this.time);
     drawEffects(ctx, this.effects);
   }
 

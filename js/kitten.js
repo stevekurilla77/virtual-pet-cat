@@ -452,10 +452,10 @@ function head(ctx, cat, time, f, colors) {
   const coat = cat.app.coat;
   const earTwitch = cat.earTwitch || 0;
   const side = cat.earSide || 1;
-  ear(ctx, -9, -9, 0.82, -0.45 - (cat.m.earBack || 0) * 0.4 + (side < 0 ? earTwitch : 0) * 0.35, cat, f, "far", colors);
+  ear(ctx, -12, -6, 1, -0.32 - (cat.m.earBack || 0) * 0.35 + (side < 0 ? earTwitch : 0) * 0.3, cat, f, "far", colors);
   const trace = () => {
     ctx.beginPath();
-    ctx.ellipse(0, 1, 16.5 + f * 2.2, 14.4 + f * 1.8, -0.08, 0, Math.PI * 2);
+    ctx.ellipse(0, 0.4, 13.2 + f * 0.4, 12.3 + f * 0.3, 0, 0, Math.PI * 2);
   };
   trace();
   shade(ctx, -8, -12, 6, 12, colors.light, colors.mid, colors.dark);
@@ -492,14 +492,14 @@ function head(ctx, cat, time, f, colors) {
   ctx.restore();
   trace();
   edge(ctx, colors.deep);
-  ear(ctx, 5, -11, 1, 0.22 - (cat.m.earBack || 0) * 0.3 + (side > 0 ? earTwitch : 0) * 0.35, cat, f, "near", colors);
+  ear(ctx, 9.5, -7, 1.05, 0.28 - (cat.m.earBack || 0) * 0.28 + (side > 0 ? earTwitch : 0) * 0.3, cat, f, "near", colors);
 
   if (f) {
     ctx.fillStyle = colors.light;
-    ctx.globalAlpha = 0.85;
+    ctx.globalAlpha = 0.8;
     ctx.beginPath();
-    ctx.ellipse(-10, 6, 6, 3.5, 0.6, 0, Math.PI * 2);
-    ctx.ellipse(9, 7, 6.5, 3.6, -0.3, 0, Math.PI * 2);
+    ctx.ellipse(-11, 5, 4.2, 2.6, 0.4, 0, Math.PI * 2);
+    ctx.ellipse(8, 6, 4.4, 2.7, -0.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
   }
@@ -507,12 +507,17 @@ function head(ctx, cat, time, f, colors) {
   const muzzle = coat.pattern === "tuxedo" || coat.pattern === "calico" ? "#f7f4f0" : colors.belly;
   ctx.fillStyle = muzzle;
   ctx.beginPath();
-  ctx.ellipse(6.5, 5.5, 7.2, 4.6, 0.15, 0, Math.PI * 2);
+  ctx.ellipse(-0.2, 5.6, 4.6, 2.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = mix(muzzle, "#fff", 0.28);
+  ctx.beginPath();
+  ctx.ellipse(-2.2, 6.2, 1.5, 1, 0.15, 0, Math.PI * 2);
+  ctx.ellipse(1.8, 6.2, 1.5, 1, -0.15, 0, Math.PI * 2);
   ctx.fill();
 
-  eye(ctx, -2.2, -0.5, 0.92, cat, true);
-  eye(ctx, 5.6, 0.4, 1, cat, false);
-  nose(ctx, 7.4, 4.2, coat.nose);
+  eye(ctx, -5.2, 0.2, 0.86, cat, true);
+  eye(ctx, 4.8, 0.2, 1, cat, false);
+  nose(ctx, -0.2, 4.9, coat.nose);
   mouth(ctx, cat);
   whiskers(ctx, cat);
   if ((cat.squint || 0) > 0.35) {
@@ -538,9 +543,9 @@ function ear(ctx, x, y, sc, rot, cat, fluff, which, colors) {
   ctx.rotate(rot);
   ctx.scale(sc, sc);
   ctx.beginPath();
-  ctx.moveTo(-5.5, 4);
-  ctx.quadraticCurveTo(-6.5, -6, 0, -13);
-  ctx.quadraticCurveTo(6.5, -6, 5.5, 4);
+  ctx.moveTo(-7.4, 5);
+  ctx.quadraticCurveTo(-7.2, -2, 0, -12);
+  ctx.quadraticCurveTo(7.2, -2, 7.4, 5);
   ctx.closePath();
   ctx.fillStyle = outer;
   ctx.fill();
@@ -573,8 +578,8 @@ function eye(ctx, x, y, sc, cat, far) {
   const pupil = cat.pupil == null ? 0.4 : cat.pupil;
   ctx.save();
   ctx.translate(x, y);
-  const rx = 5.3 * sc;
-  const ryFull = 6.2 * sc;
+  const rx = 3.15 * sc;
+  const ryFull = 3.7 * sc;
   if (open < 0.2) {
     ctx.strokeStyle = mix(coat.base, "#2c241e", 0.55);
     ctx.lineWidth = 1.05;
@@ -651,20 +656,20 @@ function mouth(ctx, cat) {
   if (mouth === "meow" || mouth === "yawn" || mouth === "chatter") {
     ctx.fillStyle = "#6a3040";
     ctx.beginPath();
-    ctx.ellipse(8.4, 9.2, mouth === "yawn" ? 2.6 : 1.7, mouth === "yawn" ? 3.2 : 1.8, 0, 0, Math.PI * 2);
+    ctx.ellipse(-0.2, 6.5, mouth === "yawn" ? 1.6 : 0.9, mouth === "yawn" ? 1.6 : 0.9, 0, 0, Math.PI * 2);
     ctx.fill();
     return;
   }
   if (mouth === "lick" || (cat.lick || 0) > 0.65) {
     ctx.fillStyle = "#e7a0b0";
     ctx.beginPath();
-    ctx.ellipse(8.4, 10, 1.1, 1.8, 0, 0, Math.PI * 2);
+    ctx.ellipse(-0.2, 6.6, 0.65, 0.8, 0, 0, Math.PI * 2);
     ctx.fill();
     return;
   }
   ctx.beginPath();
-  ctx.moveTo(7.4, 8.6);
-  ctx.quadraticCurveTo(8.3, 9.5, 9.3, 8.6);
+  ctx.moveTo(-1.1, 6.05);
+  ctx.quadraticCurveTo(-0.2, 6.55, 0.7, 6.05);
   ctx.stroke();
 }
 
@@ -673,12 +678,12 @@ function whiskers(ctx, cat) {
   ctx.globalAlpha = 0.55;
   ctx.lineWidth = 0.55;
   const lines = [
-    [2, 6.5, -16, 4],
-    [2.5, 8, -17, 8.5],
-    [3, 9.2, -14, 12],
-    [10, 6.8, 22, 4.5],
-    [10, 8.2, 23, 9],
-    [9.5, 9.4, 20, 13],
+    [-2.2, 5.7, -16, 3.2],
+    [-2.1, 6.4, -17, 6.6],
+    [-1.8, 7.1, -14, 9.6],
+    [1.8, 5.7, 16, 3.4],
+    [1.9, 6.4, 17, 6.8],
+    [1.6, 7.1, 14, 9.8],
   ];
   for (const [x1, y1, x2, y2] of lines) {
     ctx.beginPath();
@@ -691,7 +696,7 @@ function whiskers(ctx, cat) {
 
 function ribbon(ctx) {
   ctx.save();
-  ctx.translate(-11, 6);
+  ctx.translate(11, -16);
   ctx.rotate(-0.4);
   ctx.fillStyle = "#b94a62";
   ctx.globalAlpha = 0.88;
