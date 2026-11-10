@@ -202,10 +202,13 @@ export class Game {
   pointerDown(x, y, id) {
     this.audio.unlock();
     this.pointer = { x, y, down: true, id, sx: x, sy: y, lx: x, ly: y, moved: 0 };
-    if (!this.cat || y >= this.room.playBottom - 2) return;
+    if (!this.cat) return;
     const boxHit = hitBox(this.room.box, x, y);
-    const petPoint = this.aboveFinger(x, y, 48);
-    const hit = this.tool === "pet" ? catHit(this.cat, petPoint.x, petPoint.y) : catHit(this.cat, x, y);
+    const direct = catHit(this.cat, x, y);
+    const lifted = this.aboveFinger(x, y, 48);
+    const raised = catHit(this.cat, lifted.x, lifted.y);
+    const hit = direct.body ? direct : raised;
+    const petPoint = direct.body ? { x, y } : lifted;
     if ((this.tool === null || this.tool === "box" || (this.tool === "pet" && !hit.body)) && boxHit) {
       this.toggleBox();
       return;
@@ -214,6 +217,16 @@ export class Game {
     else if (this.tool === "laser") this.startLaser(x, y);
     else if (this.tool === "pet") this.startPet(petPoint.x, petPoint.y, hit);
     else if (this.tool === "yarn") this.grabYarn(x, y);
+  }
+
+  debugTarget() {
+    if (this.tool === "wand") return `${Math.round(this.wand.x)},${Math.round(this.wand.y)}`;
+    if (this.tool === "laser") return `${Math.round(this.laser.x)},${Math.round(this.laser.y)}`;
+    if (this.tool === "yarn" && this.yarn) return `${Math.round(this.yarn.x)},${Math.round(this.yarn.y)}`;
+    if (this.tool === "box") return this.cat && this.cat.inBox ? "in box" : "box";
+    if (this.tool === "pet") return this.pet.touching ? "petting" : "pet";
+    if (this.command) return this.command.name;
+    return "idle";
   }
 
   pointerMove(x, y) {
@@ -242,8 +255,11 @@ export class Game {
       this.laser.y = toy.y;
     }
     if (this.tool === "pet" && this.cat && this.grab <= 0) {
-      const touch = this.aboveFinger(x, y, 48);
-      const hit = catHit(this.cat, touch.x, touch.y);
+      const lifted = this.aboveFinger(x, y, 48);
+      const direct = catHit(this.cat, x, y);
+      const raised = catHit(this.cat, lifted.x, lifted.y);
+      const hit = direct.body ? direct : raised;
+      const touch = direct.body ? { x, y } : lifted;
       this.pet.touching = hit.body;
       if (hit.body) this.strokePet(touch.x, touch.y, hit, len(dx, dy));
     }
@@ -260,22 +276,34 @@ export class Game {
     const wasDown = this.pointer.down;
     this.pointer.down = false;
     if (!wasDown) return;
-    if (this.wand.active) this.wand.active = false;
-    if (this.laser.active) this.laser.active = false;
+    const tapped = this.pointer.moved < 16;
     this.pet.touching = false;
     if (this.yarn && this.yarn.held) {
       this.yarn.held = false;
       const dx = this.pointer.x - this.pointer.sx;
       const dy = this.pointer.y - this.pointer.sy;
-      if (Math.hypot(dx, dy) < 8) {
-        this.yarn.vx = (this.cat && this.cat.facing ? this.cat.facing : 1) * (180 + Math.random() * 70);
-        this.yarn.vy = -260;
+      if (tapped) {
+        this.yarn.vx = 0;
+        this.yarn.vy = 0;
+        this.yarn.engaged = true;
+        this.toyHold = this.time + 2;
       } else {
         this.yarn.vx = clamp(dx * 3.4, -640, 640);
         this.yarn.vy = clamp(dy * 3.4, -720, 420);
+        this.yarn.engaged = true;
+        this.toyHold = 0;
       }
-      this.yarn.engaged = true;
       this.yarn.still = 0;
+    }
+    if (this.tool === "wand" || this.tool === "laser") {
+      if (tapped) this.toyHold = this.time + 2;
+      else {
+        this.wand.active = false;
+        this.laser.active = false;
+      }
+    } else if (!this.yarn || !this.yarn.engaged) {
+      this.wand.active = false;
+      this.laser.active = false;
     }
     this.pet.belly = 0;
   }
@@ -408,6 +436,12 @@ export class Game {
     this.updateMoodDrift(dt);
 
     const boxCommand = this.command && (this.command.name === "box" || this.command.name === "outbox");
+    if (this.toyHold && this.time > this.toyHold && !this.pointer.down) {
+      this.wand.active = false;
+      this.laser.active = false;
+      if (this.yarn && Math.hypot(this.yarn.vx, this.yarn.vy) < 40) this.yarn.engaged = false;
+      this.toyHold = 0;
+    }
     if (this.grab > 0) this.updateGrab(dt, setHop);
     else if (this.wand.active) this.updateWand(dt, setHop);
     else if (this.laser.active) this.updateLaser(dt, setHop);

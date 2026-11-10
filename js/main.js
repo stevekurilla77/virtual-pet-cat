@@ -10,6 +10,7 @@ import {
   swatchBackground,
 } from "./coats.js";
 import { Game, renderPreview } from "./game.js";
+import { auditTailPose, renderTailSheet } from "./kitten.js";
 
 const app = document.querySelector("#app");
 const roomCanvas = document.querySelector("#room");
@@ -213,12 +214,14 @@ function bindControls() {
   for (const button of tray.querySelectorAll(".toy")) {
     button.addEventListener("click", () => {
       audio.unlock();
+      const previous = game.tool;
       game.setTool(button.dataset.tool);
+      if (game.tool && game.tool !== previous && !introduced.has(game.tool)) {
+        introduced.add(game.tool);
+        showPlayToast();
+      }
     });
   }
-
-  dock.addEventListener("pointerdown", (event) => event.stopPropagation());
-  dock.addEventListener("pointerup", (event) => event.stopPropagation());
 
   trayToggle.addEventListener("click", () => {
     const open = dock.classList.toggle("collapsed");
@@ -228,45 +231,135 @@ function bindControls() {
     if (!hud.hidden) game.resize(measureUi());
   });
 
-  roomCanvas.addEventListener("pointerdown", onPointerDown, { passive: false });
-  roomCanvas.addEventListener("pointermove", onPointerMove, { passive: false });
-  roomCanvas.addEventListener("pointerup", onPointerUp);
-  roomCanvas.addEventListener("pointercancel", onPointerUp);
+  const listen = { capture: true, passive: false };
+  app.addEventListener("pointerdown", (event) => onPlayDown(event, "pointer"), listen);
+  app.addEventListener("pointermove", (event) => onPlayMove(event, "pointer"), listen);
+  app.addEventListener("pointerup", (event) => onPlayUp(event, "pointer"), listen);
+  app.addEventListener("pointercancel", (event) => onPlayUp(event, "pointer"), listen);
+  app.addEventListener("touchstart", (event) => onPlayDown(event, "touch"), listen);
+  app.addEventListener("touchmove", (event) => onPlayMove(event, "touch"), listen);
+  app.addEventListener("touchend", (event) => onPlayUp(event, "touch"), listen);
+  app.addEventListener("touchcancel", (event) => onPlayUp(event, "touch"), listen);
+  window.addEventListener("pointerup", (event) => onPlayUp(event, "pointer"), listen);
+  window.addEventListener("touchend", (event) => onPlayUp(event, "touch"), listen);
+  document.addEventListener("gesturestart", (event) => event.preventDefault(), listen);
   roomCanvas.addEventListener("contextmenu", (event) => event.preventDefault());
-  window.addEventListener("pointerup", onPointerUp);
+  bindSecret(label);
+  bindSecret(title);
   window.addEventListener("keydown", (event) => {
     if (event.key.toLowerCase() === "m" && event.target.tagName !== "INPUT") muteBtn.click();
   });
 }
 
-function onPointerDown(event) {
-  if (!game.running || event.button > 0) return;
-  event.preventDefault();
-  try {
-    roomCanvas.setPointerCapture(event.pointerId);
-  } catch (error) {
-    // A cancelled or synthetic touch has no active pointer. The drag still tracks.
+const introduced = new Set();
+const inputGate = { source: "", at: 0 };
+const toast = document.querySelector("#play-toast");
+const debugEl = document.querySelector("#touch-debug");
+
+function isControl(target) {
+  if (!target || !target.closest) return false;
+  return Boolean(target.closest("#dock, #topbar, #picker, button, input, a, label"));
+}
+
+function claimInput(source) {
+  const now = performance.now();
+  if (inputGate.source && inputGate.source !== source && now - inputGate.at < 70) return false;
+  inputGate.source = source;
+  inputGate.at = now;
+  return true;
+}
+
+function pointFrom(event) {
+  const src = (event.touches && event.touches[0]) || (event.changedTouches && event.changedTouches[0]) || event;
+  const rect = roomCanvas.getBoundingClientRect();
+  return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+}
+
+function paintDebug(type, point) {
+  if (!debugEl || debugEl.hidden) return;
+  const target = game.debugTarget ? game.debugTarget() : "";
+  debugEl.textContent = `${type}\nx ${Math.round(point.x)}  y ${Math.round(point.y)}\ntoy ${game.tool || "none"}\ntarget ${target}`;
+}
+
+function onPlayDown(event, source) {
+  if (!game.running || isControl(event.target)) return;
+  if (source === "pointer" && event.button > 0) return;
+  if (event.cancelable) event.preventDefault();
+  if (!claimInput(source)) return;
+  if (source === "pointer" && event.pointerId != null) {
+    try {
+      roomCanvas.setPointerCapture(event.pointerId);
+    } catch (error) {
+      // Safari drops capture when a touch is already being tracked as a gesture.
+    }
   }
-  const point = localPoint(event);
-  game.pointerDown(point.x, point.y, event.pointerId);
+  const point = pointFrom(event);
+  paintDebug(event.type, point);
+  game.pointerDown(point.x, point.y, event.pointerId || 1);
   hud.classList.toggle("is-playing", game.pointer.down);
 }
 
-function onPointerMove(event) {
-  const point = localPoint(event);
-  if (game.pointer.down && event.pointerId !== game.pointer.id) return;
+function onPlayMove(event, source) {
+  if (!game.pointer.down) return;
+  if (event.cancelable) event.preventDefault();
+  if (!claimInput(source)) return;
+  const point = pointFrom(event);
+  paintDebug(event.type, point);
   game.pointerMove(point.x, point.y);
 }
 
-function onPointerUp(event) {
-  if (game.pointer.down && event.pointerId != null && event.pointerId !== game.pointer.id) return;
+function onPlayUp(event, source) {
+  if (!game.pointer.down) return;
+  if (event.type === "pointercancel" && inputGate.source === "touch") return;
+  if (event.cancelable) event.preventDefault();
+  if (!claimInput(source)) return;
+  const point = pointFrom(event);
+  paintDebug(event.type, point);
+  game.pointerMove(point.x, point.y);
   game.pointerUp();
   hud.classList.remove("is-playing");
 }
 
-function localPoint(event) {
-  const rect = roomCanvas.getBoundingClientRect();
-  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+function showPlayToast() {
+  if (!toast) return;
+  toast.hidden = false;
+  toast.classList.add("show");
+  window.clearTimeout(showPlayToast.timer);
+  showPlayToast.timer = window.setTimeout(() => toast.classList.remove("show"), 2000);
+}
+
+function bindSecret(node) {
+  if (!node) return;
+  let timer = 0;
+  let held = false;
+  let presses = [];
+  const start = (event) => {
+    if (held) return;
+    held = true;
+    if (event.cancelable) event.preventDefault();
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      const now = performance.now();
+      presses = presses.filter((stamp) => now - stamp < 4000);
+      presses.push(now);
+      if (presses.length >= 3) {
+        presses = [];
+        debugEl.hidden = !debugEl.hidden;
+        if (!debugEl.hidden) paintDebug("debug", { x: 0, y: 0 });
+      }
+    }, 480);
+  };
+  const stop = () => {
+    held = false;
+    window.clearTimeout(timer);
+  };
+  node.addEventListener("pointerdown", start);
+  node.addEventListener("pointerup", stop);
+  node.addEventListener("pointercancel", stop);
+  node.addEventListener("pointerleave", stop);
+  node.addEventListener("touchstart", start, { passive: false });
+  node.addEventListener("touchend", stop);
+  node.addEventListener("touchcancel", stop);
 }
 
 function currentDraft() {
@@ -350,6 +443,8 @@ function persist() {
 window.sunbeam = {
   game,
   draft,
+  auditTailPose,
+  renderTailSheet,
   get saved() {
     return saved;
   },

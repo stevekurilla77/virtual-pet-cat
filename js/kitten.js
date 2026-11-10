@@ -1,5 +1,8 @@
 // Painted kitten. Soft fur, real proportions, no cartoon outline.
 
+import { COATS, EYES } from "./coats.js";
+import { clonePose } from "./poses.js";
+
 function rgb(hex) {
   const n = parseInt(hex.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -136,8 +139,12 @@ function active(ctx, cat, time) {
     }
   }
   tail(ctx, cat, m, time, f, colors);
+  if (cat._hideBody) {
+    ctx.restore();
+    return;
+  }
   if (tuck < 0.72) drawLegs(ctx, cat, m, breath, colors, "far");
-  torso(ctx, cat, m, breath, f, tuck, colors);
+  torso(ctx, cat, m, breath, f, tuck, colors, time);
   if (tuck < 0.72) drawLegs(ctx, cat, m, breath, colors, "near");
   else sitLegs(ctx, cat, m, breath, colors);
   const y = (m.bodyY + breath) * 0.35;
@@ -150,25 +157,26 @@ function active(ctx, cat, time) {
   ctx.restore();
 }
 
-function torso(ctx, cat, m, breath, f, tuck, colors) {
+function torso(ctx, cat, m, breath, f, tuck, colors, time) {
   const y = (m.bodyY + breath) * 0.35;
   const fluff = f * 9;
   const trace = () => {
     ctx.beginPath();
     if (tuck > 0.62) {
-      ctx.moveTo(-28 - fluff, -6);
-      ctx.bezierCurveTo(-36 - fluff, -26, -18, -40 - fluff, -2, -34 - fluff * 0.3);
+      const rump = rumpAnchor(cat, time);
+      ctx.moveTo(rump.x, rump.y);
+      ctx.bezierCurveTo(rump.x - 8, -26, -18, -40 - fluff, -2, -34 - fluff * 0.3);
       ctx.bezierCurveTo(12, -32, 20 + fluff, -20, 14, -8);
-      ctx.bezierCurveTo(10, -2, -6, 1, -28 - fluff, -6);
+      ctx.bezierCurveTo(10, -2, -6, 1, rump.x, rump.y);
     } else {
+      const rump = rumpAnchor(cat, time);
       const gallop = cat.gait === "gallop" ? Math.sin((cat.walkPhase || 0) * Math.PI * 2) * 8 * (cat.gaitBlend || 0) : 0;
-      const rump = -30 - fluff * 0.2 - Math.max(0, -gallop);
       const chest = 22 + fluff * 0.2 + Math.max(0, gallop);
       const top = -24 - fluff * 0.25;
-      ctx.moveTo(rump, -12);
-      ctx.bezierCurveTo(rump - 4, top, -2, top - 2, chest * 0.45, top + 6);
+      ctx.moveTo(rump.x, rump.y);
+      ctx.bezierCurveTo(rump.x - 4, top, -2, top - 2, chest * 0.45, top + 6);
       ctx.bezierCurveTo(chest + 2, -14, chest, -8, chest - 8, -7);
-      ctx.bezierCurveTo(6, -5, rump + 12, -8, rump, -12);
+      ctx.bezierCurveTo(6, -5, rump.x + 12, -8, rump.x, rump.y);
     }
     ctx.closePath();
   };
@@ -385,12 +393,45 @@ function pawShape(ctx, x, y, color, far) {
   }
 }
 
-function tail(ctx, cat, m, time, f, colors) {
-  const lift = m.tailLift;
+export function rumpAnchor(cat, time = 0) {
+  const m = cat.m || {};
+  const f = cat.app && cat.app.hair === "long" ? 1 : 0;
+  const fluff = f * 9;
+  const tuck = m.legTuck == null ? 1 : m.legTuck;
+  if (cat.inBox) return { x: -9, y: 13, mode: "box" };
+  if ((cat.curl || 0) > 0.72) {
+    const rx = 22 + f * 5;
+    const ry = 16 + f * 3;
+    return { x: -2 - rx * 0.25, y: -16 + ry * 0.2, mode: "curl" };
+  }
+  if ((cat.back || 0) > 0.72) return { x: -16, y: -20, mode: "back" };
+  if (tuck > 0.62) return { x: -26 - fluff * 0.85, y: -10, mode: "sit" };
+  const gallop = cat.gait === "gallop" ? Math.sin((cat.walkPhase || 0) * Math.PI * 2) * 8 * (cat.gaitBlend || 0) : 0;
+  return { x: -28 - fluff * 0.2 - Math.max(0, -gallop), y: -12, mode: "stand" };
+}
+
+export function tailGeometry(cat, time = 0) {
+  const m = cat.m || {};
+  const f = cat.app && cat.app.hair === "long" ? 1 : 0;
+  const rump = rumpAnchor(cat, time);
+  const lift = m.tailLift == null ? 0.7 : m.tailLift;
   const wag = Math.sin(time * (cat.tailSpeed || 1.5)) * (cat.tailAmp || 6) * 0.42;
-  const p0 = { x: -24, y: m.bodyY + 2 };
-  const p1 = { x: p0.x - 18 - lift * 6 - f * 6, y: p0.y - 12 - lift * 14 };
-  const p2 = { x: p0.x - 4 + wag * 0.25, y: p0.y - 28 - lift * 18 - f * 8 + wag };
+  const p0 = { x: rump.x + 8, y: rump.y + 1 };
+  const p1 = { x: rump.x - 14 - lift * 8 - f * 4, y: rump.y - 8 - lift * 14 + wag * 0.12 };
+  const p2 = { x: rump.x - 4 + wag * 0.28, y: rump.y - 24 - lift * 18 - f * 6 + wag };
+  const gap = Math.hypot(p0.x - rump.x, p0.y - rump.y);
+  return { rump, p0, p1, p2, gap, mode: rump.mode, attached: gap < 12 };
+}
+
+function tail(ctx, cat, m, time, f, colors) {
+  const geo = tailGeometry(cat, time);
+  const { p0, p1, p2 } = geo;
+  if (cat._probe) {
+    const m2 = ctx.getTransform();
+    const map = (p) => ({ x: m2.a * p.x + m2.c * p.y + m2.e, y: m2.b * p.x + m2.d * p.y + m2.f });
+    cat._probePts = [0, 0.08, 0.16, 0.24].map((t) => map(quad(p0, p1, p2, t)));
+  }
+  if (cat._hideTail) return;
   const coat = cat.app.coat;
   const furColor = coat.pattern === "point" ? coat.point : colors.mid;
   ctx.save();
@@ -732,12 +773,11 @@ function curled(ctx, cat, time) {
   const breath = Math.sin(time * 1.4) * 1.1;
   const rx = 22 + f * 5;
   const ry = 16 + f * 3 + breath * 0.3;
-  ctx.strokeStyle = cat.app.coat.pattern === "point" ? cat.app.coat.point : colors.mid;
-  ctx.lineWidth = f ? 9 : 5;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.arc(-2, -16, rx * 0.9, 0.2, Math.PI * 1.2);
-  ctx.stroke();
+  const curlWas = cat.curl;
+  cat.curl = Math.max(cat.curl || 0, 0.8);
+  tail(ctx, cat, cat.m || {}, time, f, colors);
+  cat.curl = curlWas;
+  if (cat._hideBody) return;
   ctx.beginPath();
   ctx.ellipse(-2, -16, rx, ry, 0.1, 0, Math.PI * 2);
   shade(ctx, -10, -30, 4, -4, colors.light, colors.mid, colors.dark);
@@ -766,6 +806,11 @@ function rolled(ctx, cat, time) {
   const colors = tone(cat.app.coat);
   const f = cat.app.hair === "long" ? 1 : 0;
   const kick = Math.sin(time * 9) * (cat.backKick || 0);
+  const backWas = cat.back;
+  cat.back = Math.max(cat.back || 0, 0.8);
+  tail(ctx, cat, cat.m || {}, time, f, colors);
+  cat.back = backWas;
+  if (cat._hideBody) return;
   ctx.beginPath();
   ctx.ellipse(0, -22, 24 + f * 4, 14 + f * 2, 0.15, 0, Math.PI * 2);
   shade(ctx, -8, -36, 6, -8, colors.dark, colors.mid, colors.light);
@@ -782,7 +827,7 @@ function rolled(ctx, cat, time) {
     [16, -30],
   ];
   paws.forEach((paw, i) => {
-    limb(ctx, paw[0] * 0.3, -24, paw[0], paw[1] + (i > 1 ? kick : -kick), colors.mid, colors, 4);
+    frontLeg(ctx, { x: paw[0] * 0.35, y: -24 }, { x: paw[0], y: paw[1] + (i > 1 ? kick : -kick) }, colors.mid, colors.mid, false, cat.app.coat);
     ctx.fillStyle = "#e7a8b4";
     ctx.beginPath();
     ctx.ellipse(paw[0], paw[1] - 1, 1.6, 1.1, 0, 0, Math.PI * 2);
@@ -798,25 +843,151 @@ function rolled(ctx, cat, time) {
 export function paintBoxCat(ctx, cat, box, time) {
   const f = cat.app.hair === "long" ? 1 : 0;
   const colors = tone(cat.app.coat);
-  const wag = Math.sin(time * (cat.tailSpeed || 2)) * 6;
-  ctx.save();
-  ctx.strokeStyle = cat.app.coat.pattern === "point" ? cat.app.coat.point : colors.mid;
-  ctx.lineWidth = f ? 8 : 4.5;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(box.x + 18, box.y + 26);
-  ctx.quadraticCurveTo(box.x - 10, box.y + 8, box.x - 4, box.y - 6 + wag * 0.4);
-  ctx.stroke();
-  ctx.restore();
   const rise = (cat.peek || 0.7) * 16;
   const bob = Math.sin(time * 1.5) * 1.2;
   ctx.save();
   ctx.translate(box.x + box.w * 0.42, box.y + 4 - rise + bob);
   ctx.scale((cat.facing || -1) * cat.scale * 0.9, cat.scale * 0.9);
+  const boxed = { ...cat, inBox: true, _probe: cat._probe, _hideTail: cat._hideTail };
+  tail(ctx, boxed, cat.m || {}, time, f, colors);
+  if (cat._probe) cat._probePts = boxed._probePts;
+  if (cat._hideBody) {
+    ctx.restore();
+    return;
+  }
   ctx.fillStyle = colors.mid;
   ctx.beginPath();
   ctx.ellipse(0, 14, 12 + f * 3, 8, 0, 0, Math.PI * 2);
   ctx.fill();
   head(ctx, cat, time, f, colors);
   ctx.restore();
+}
+
+const SHEET_POSES = ["sit", "walk", "run", "groom", "stretch", "pounce", "curl", "back", "box"];
+
+function auditCat(poseName, hair, facing) {
+  const eye = EYES.green;
+  return {
+    x: 0,
+    groundY: 0,
+    hop: 0,
+    facing,
+    scale: 1.1,
+    squash: 1,
+    drawRot: poseName === "pounce" ? -0.35 : 0,
+    app: {
+      hair,
+      coat: COATS.orange,
+      eye: eye.color,
+      eyeDeep: eye.deep,
+      whisker: "#4a3428",
+      gender: "girl",
+    },
+    m: clonePose(poseName === "box" ? "sit" : poseName),
+    curl: poseName === "curl" ? 1 : 0,
+    back: poseName === "back" ? 1 : 0,
+    inBox: false,
+    gait: poseName === "run" ? "gallop" : "walk",
+    gaitBlend: poseName === "walk" || poseName === "run" ? 1 : 0,
+    walkPhase: 0.35,
+    tailSpeed: 1.6,
+    tailAmp: 8,
+    blink: 1,
+    asleep: poseName === "curl",
+    peek: 0.8,
+    purr: 0,
+  };
+}
+
+function inkNear(ctx, x, y) {
+  const px = Math.round(x);
+  const py = Math.round(y);
+  let best = 0;
+  for (let dy = -4; dy <= 4; dy += 2) {
+    for (let dx = -4; dx <= 4; dx += 2) {
+      const sx = px + dx;
+      const sy = py + dy;
+      if (sx < 0 || sy < 0 || sx >= ctx.canvas.width || sy >= ctx.canvas.height) continue;
+      const alpha = ctx.getImageData(sx, sy, 1, 1).data[3];
+      if (alpha > best) best = alpha;
+    }
+  }
+  return best;
+}
+
+function paintAudit(ctx, cat, poseName, time) {
+  if (poseName === "box") paintBoxCat(ctx, cat, { x: -20, y: -30, w: 70, h: 36 }, time);
+  else paintCat(ctx, cat, time);
+}
+
+export function auditTailPose(poseName, hair, facing) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 240;
+  canvas.height = 220;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const cat = auditCat(poseName, hair, facing);
+  const time = 0.4;
+  const draw = (hideTail, hideBody) => {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.translate(120, 168);
+    cat._probe = true;
+    cat._hideTail = hideTail;
+    cat._hideBody = hideBody;
+    cat._probePts = null;
+    paintAudit(ctx, cat, poseName, time);
+  };
+  draw(true, false);
+  const bodyPoint = cat._probePts && cat._probePts[0];
+  const bodyCovers = Boolean(bodyPoint && inkNear(ctx, bodyPoint.x, bodyPoint.y) > 20);
+  draw(false, true);
+  const tailPts = cat._probePts || [];
+  const tailCovers = tailPts.length > 0 && tailPts.every((point) => inkNear(ctx, point.x, point.y) > 20);
+  const geo = tailGeometry(cat, time);
+  cat._probe = false;
+  cat._hideTail = false;
+  cat._hideBody = false;
+  return {
+    pose: poseName,
+    hair,
+    facing,
+    mode: geo.mode,
+    gap: Math.round(geo.gap * 10) / 10,
+    bodyCovers,
+    tailCovers,
+    ok: Boolean(bodyCovers && tailCovers && geo.attached),
+  };
+}
+
+export function renderTailSheet(canvas) {
+  const rows = [
+    ["short", 1],
+    ["short", -1],
+    ["long", 1],
+    ["long", -1],
+  ];
+  const cellW = 120;
+  const cellH = 104;
+  canvas.width = SHEET_POSES.length * cellW;
+  canvas.height = rows.length * cellH;
+  const ctx = canvas.getContext("2d");
+  const results = [];
+  rows.forEach(([hair, facing], row) => {
+    SHEET_POSES.forEach((pose, col) => {
+      const cat = auditCat(pose, hair, facing);
+      ctx.save();
+      ctx.translate(col * cellW, row * cellH);
+      ctx.fillStyle = "#f4e4d4";
+      ctx.fillRect(0, 0, cellW, cellH);
+      ctx.fillStyle = "#6a4632";
+      ctx.font = "11px sans-serif";
+      ctx.fillText(`${pose} ${hair === "long" ? "long" : "short"} ${facing > 0 ? "R" : "L"}`, 6, 14);
+      ctx.translate(cellW * 0.55, cellH * 0.8);
+      ctx.scale(0.82, 0.82);
+      paintAudit(ctx, cat, pose, 0.4);
+      ctx.restore();
+      results.push(auditTailPose(pose, hair, facing));
+    });
+  });
+  return results;
 }

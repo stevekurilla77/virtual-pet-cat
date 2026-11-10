@@ -30,7 +30,8 @@ Any static file server works. The page uses ES modules, so open it over `http://
 - Coats: orange tabby, brown tabby, gray, black, white, tuxedo, calico, tortoiseshell, Siamese, and cream.
 - The cat wanders, naps in the sunbeam, grooms, stretches, stares out the window, gets the zoomies, and sits in the box.
 - Birds land on the feeder. The cat chatters, wiggles, and pounces at the glass.
-- Toys, along the bottom: feather wand, laser dot, yarn ball, petting, and the box. A long rub on the belly gets a playful grab.
+- Toys, along the bottom: feather wand, laser dot, yarn ball, petting, and the box. Drag on the floor, or tap once to leave the toy there for a couple of seconds. A long rub on the belly gets a playful grab. The first time you pick each toy, a short note says to drag on the floor.
+- Long-press the cat’s name three times to show a small touch readout: the last event, where it landed, the selected toy, and where the cat is headed. Long-press again three times to hide it.
 - Playful, sleepy, and happy shift what the cat does next.
 - Sound is synthesized in the browser. The speaker button mutes it. Press `M` on a keyboard.
 
@@ -44,7 +45,8 @@ The layout respects the iPhone notch and home bar.
 | `css/game.css` | Layout, safe areas, picker, toy tray |
 | `js/main.js` | Picker, saving, input, game loop |
 | `js/game.js` | Cat life, toys, birds, moods |
-| `js/draw.js` | Room, cat, birds, toys |
+| `js/draw.js` | Room, birds, toys |
+| `js/kitten.js` | The cat, including the tail anchored to the rump |
 | `js/coats.js` | Coats, eyes, saved cat |
 | `js/poses.js` | Body poses |
 | `js/audio.js` | Purr, meow, chirp, tweets |

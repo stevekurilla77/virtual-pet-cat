@@ -47,6 +47,7 @@ button:focus-visible, input:focus-visible {
   overflow: hidden;
   background: #f6d7c0;
   box-shadow: 0 0 0 1px rgba(90, 40, 20, 0.06);
+  touch-action: none;
 }
 
 #room {
@@ -63,6 +64,7 @@ button:focus-visible, input:focus-visible {
   inset: 0;
   z-index: 2;
   pointer-events: none;
+  touch-action: none;
 }
 
 #hud[hidden], #picker[hidden] { display: none !important; }
@@ -76,7 +78,8 @@ button:focus-visible, input:focus-visible {
 }
 
 #cat-label {
-  pointer-events: none;
+  pointer-events: auto;
+  touch-action: none;
   font-weight: 700;
   font-size: 14px;
   letter-spacing: -0.03em;
@@ -196,8 +199,46 @@ button:focus-visible, input:focus-visible {
 }
 
 .toy svg { width: 22px; height: 22px; display: block; margin: 0 auto; opacity: 0.82; }
-.toy.is-on { background: rgba(255, 214, 150, 0.85); }
+.toy.is-on {
+  background: rgba(255, 214, 150, 0.95);
+  box-shadow: 0 0 0 2px #c4622a;
+}
 .toy.is-on svg { opacity: 1; }
+
+#play-toast {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: calc(52px + env(safe-area-inset-top, 0px));
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(74, 52, 40, 0.88);
+  color: #fff8f2;
+  font-size: 13px;
+  letter-spacing: -0.02em;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+
+#play-toast.show { opacity: 1; }
+
+#touch-debug {
+  position: absolute;
+  z-index: 6;
+  left: 8px;
+  bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+  max-width: calc(100% - 16px);
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(20, 14, 10, 0.82);
+  color: #f6e7d4;
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
+  pointer-events: none;
+}
 
 #picker {
   position: absolute;
