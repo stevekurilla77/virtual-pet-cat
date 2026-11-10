@@ -120,15 +120,33 @@ function active(ctx, cat, time) {
   const breath = Math.sin(time * (cat.asleep ? 1.5 : 2.6)) * (cat.asleep ? 1.6 : 0.7);
   const tuck = m.legTuck;
   const colors = tone(cat.app.coat);
+  const phase = cat.walkPhase || 0;
+  const blend = cat.gaitBlend || 0;
+  const gallop = cat.gait === "gallop";
+  ctx.save();
+  if (blend > 0.02 && tuck < 0.75) {
+    if (gallop) {
+      ctx.translate(0, -Math.max(0, Math.sin(phase * Math.PI * 2)) * 5 * blend);
+      ctx.translate(0, -14);
+      ctx.scale(1 + Math.sin(phase * Math.PI * 2) * 0.07 * blend, 1);
+      ctx.translate(0, 14);
+    } else {
+      ctx.translate(Math.sin(phase * Math.PI * 2) * 1.4 * blend, Math.sin(phase * Math.PI * 4) * 1.15 * blend);
+      ctx.rotate(Math.sin(phase * Math.PI * 2) * 0.04 * blend);
+    }
+  }
   tail(ctx, cat, m, time, f, colors);
+  if (tuck < 0.72) drawLegs(ctx, cat, m, breath, colors, "far");
   torso(ctx, cat, m, breath, f, tuck, colors);
-  legs(ctx, cat, m, breath, f, tuck, colors);
+  if (tuck < 0.72) drawLegs(ctx, cat, m, breath, colors, "near");
+  else sitLegs(ctx, cat, m, breath, colors);
   const y = (m.bodyY + breath) * 0.35;
   const neckX = tuck > 0.62 ? 6 : 16 + (1 - tuck) * 8;
   const neckY = tuck > 0.62 ? -30 : y - 16;
   ctx.save();
   ctx.translate(neckX, neckY);
   head(ctx, cat, time, f, colors);
+  ctx.restore();
   ctx.restore();
 }
 
@@ -143,13 +161,14 @@ function torso(ctx, cat, m, breath, f, tuck, colors) {
       ctx.bezierCurveTo(12, -32, 20 + fluff, -20, 14, -8);
       ctx.bezierCurveTo(10, -2, -6, 1, -28 - fluff, -6);
     } else {
-      const rump = -26 - (1 - tuck) * 4 - fluff * 0.3;
-      const chest = 18 + (1 - tuck) * 10;
-      const top = y - 14 - fluff * 0.3;
-      ctx.moveTo(rump, y + 2);
-      ctx.bezierCurveTo(rump - 6, top, -4, top - 4, chest * 0.35, top + 2);
-      ctx.bezierCurveTo(chest, top + 4, chest + 4, y + 6, chest - 4, y + 12);
-      ctx.bezierCurveTo(4, y + 16, rump + 8, y + 10, rump, y + 2);
+      const gallop = cat.gait === "gallop" ? Math.sin((cat.walkPhase || 0) * Math.PI * 2) * 8 * (cat.gaitBlend || 0) : 0;
+      const rump = -30 - fluff * 0.2 - Math.max(0, -gallop);
+      const chest = 22 + fluff * 0.2 + Math.max(0, gallop);
+      const top = -24 - fluff * 0.25;
+      ctx.moveTo(rump, -12);
+      ctx.bezierCurveTo(rump - 4, top, -2, top - 2, chest * 0.45, top + 6);
+      ctx.bezierCurveTo(chest + 2, -14, chest, -8, chest - 8, -7);
+      ctx.bezierCurveTo(6, -5, rump + 12, -8, rump, -12);
     }
     ctx.closePath();
   };
@@ -163,11 +182,11 @@ function torso(ctx, cat, m, breath, f, tuck, colors) {
   fur(ctx, 41, f ? 80 : 54, -34, y - 26, 58, 34, 1.15, colors.deep, f ? 7.5 : 3.8, f ? 0.32 : 0.24);
   fur(ctx, 77, 24, -8, y - 16, 28, 18, 1.4, colors.light, f ? 5 : 2.6, 0.2);
   ctx.restore();
-  if (cat.app.coat.pattern !== "point" && cat.app.coat.pattern !== "tortie") {
+  if (tuck > 0.55 && cat.app.coat.pattern !== "point" && cat.app.coat.pattern !== "tortie") {
     ctx.fillStyle = colors.belly;
     ctx.globalAlpha = 0.9;
     ctx.beginPath();
-    ctx.ellipse(6 + tuck * 2, y + 6, 9 + f * 3, 7 + f, 0.4, 0, Math.PI * 2);
+    ctx.ellipse(4, -16, 8 + f * 2, 6 + f, 0.3, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
   }
@@ -214,74 +233,154 @@ function blob(ctx, color, x, y, rx, ry, rot, alpha) {
   ctx.globalAlpha = 1;
 }
 
-function legs(ctx, cat, m, breath, f, tuck, colors) {
-  const coat = cat.app.coat;
-  const y = m.bodyY + breath;
-  const paw = coat.pattern === "tuxedo" ? "#f4f1ee" : coat.pattern === "point" ? coat.point : colors.mid;
-  if (tuck > 0.6 && m.stretch < 0.35) {
-    const x0 = 4;
-    limb(ctx, x0, y + 2, x0 - 1, -1, paw, colors, f ? 6.2 : 5.2);
-    if (m.groom > 0.15) {
-      const px = x0 + 8 + (m.headX - x0 - 4) * m.groom;
-      const py = -1 + (m.headY + 10) * m.groom;
-      limb(ctx, x0 + 8, y + 1, px, py, colors.mid, colors, 4.4);
-    } else if (cat.swat > 0.05) {
-      limb(ctx, x0 + 8, y, x0 + 18 + 16 * cat.swat, -6 - 14 * cat.swat, paw, colors, 4.6);
-    } else {
-      limb(ctx, x0 + 9, y + 2, x0 + 8, -1, paw, colors, f ? 6.2 : 5.2);
-    }
-    ctx.fillStyle = colors.dark;
-    ctx.beginPath();
-    ctx.ellipse(-12, -2, 6, 3.2, 0.2, 0, Math.PI * 2);
-    ctx.fill();
-    return;
-  }
-  const phase = cat.walkPhase || 0;
-  const stride = m.stride || 0;
-  const hips = [
-    { x: -18, y: y + 4, shift: 0.2, w: 4.6 },
-    { x: -8, y: y + 6, shift: Math.PI, w: 5.2 },
-    { x: 8, y: y + 5, shift: 1.1, w: 4.4 },
-    { x: 16 + m.stretch * 10, y: y + 6, shift: Math.PI + 1.1, w: 5 },
-  ];
-  hips.forEach((hip, index) => {
-    const swing = Math.sin(phase * Math.PI * 2 + hip.shift) * 9 * stride;
-    const lift = Math.max(0, Math.sin(phase * Math.PI * 2 + hip.shift)) * 7 * stride;
-    let footX = hip.x + swing;
-    let footY = -1.5 - lift;
-    if (m.stretch > 0.2 && index >= 2) {
-      footX = hip.x + 22 * m.stretch;
-      footY = -1;
-    }
-    if (index === 3 && cat.swat > 0) {
-      footX += 14 * cat.swat;
-      footY -= 12 * cat.swat;
-    }
-    limb(ctx, hip.x, hip.y, footX, footY, paw, colors, hip.w);
-  });
+function coatLeg(coat, colors, far) {
+  const base = far ? mix(colors.mid, colors.dark, 0.5) : colors.mid;
+  return base;
 }
 
-function limb(ctx, x0, y0, x1, y1, color, colors, width) {
-  const kneeX = x0 * 0.45 + x1 * 0.55 + 1.5;
-  const kneeY = y0 * 0.42 + y1 * 0.58;
-  ctx.strokeStyle = colors.dark;
-  ctx.lineCap = "round";
-  ctx.lineWidth = width + 1.4;
+function sitLegs(ctx, cat, m, breath, colors) {
+  const coat = cat.app.coat;
+  const y = (m.bodyY + breath) * 0.35;
+  const fore = coat.pattern === "point" ? coat.point : coatLeg(coat, colors, false);
+  const paw = coat.pattern === "tuxedo" ? "#f3f0ec" : fore;
+  frontLeg(ctx, { x: 2, y: y + 4 }, { x: 1, y: -1 }, fore, paw, false, coat);
+  if (m.groom > 0.15) {
+    const px = 10 + (m.headX - 8) * m.groom;
+    const py = -1 + (m.headY + 8) * m.groom;
+    frontLeg(ctx, { x: 10, y: y + 2 }, { x: px, y: py }, fore, paw, false, coat);
+  } else if (cat.swat > 0.05) {
+    frontLeg(ctx, { x: 10, y: y + 2 }, { x: 16 + 18 * cat.swat, y: -4 - 12 * cat.swat }, fore, paw, false, coat);
+  } else {
+    frontLeg(ctx, { x: 11, y: y + 4 }, { x: 12, y: -1 }, fore, paw, false, coat);
+  }
+  ctx.fillStyle = coat.pattern === "tuxedo" ? "#f3f0ec" : coatLeg(coat, colors, true);
   ctx.beginPath();
-  ctx.moveTo(x0, y0);
-  ctx.quadraticCurveTo(kneeX, kneeY, x1, y1);
-  ctx.stroke();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width;
-  ctx.stroke();
+  ctx.ellipse(-10, -1.5, 6.5, 3.2, 0.15, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawLegs(ctx, cat, m, breath, colors, side) {
+  const coat = cat.app.coat;
+  const y = (m.bodyY + breath) * 0.35;
+  const phase = cat.walkPhase || 0;
+  const blend = cat.gaitBlend || 0;
+  const gallop = cat.gait === "gallop";
+  const roll = Math.sin(phase * Math.PI * 2) * 2.2 * blend;
+  const specs = side === "far"
+    ? [
+        { kind: "hind", phase: gallop ? 0 : 0, hip: { x: -24 + roll, y: -16 }, rest: -18 },
+        { kind: "fore", phase: gallop ? 0.5 : 0.5, hip: { x: 8, y: -15 }, rest: 10 },
+      ]
+    : [
+        { kind: "hind", phase: gallop ? 0.06 : 0.5, hip: { x: -14 + roll, y: -14 }, rest: -6 },
+        { kind: "fore", phase: gallop ? 0.5 : 0, hip: { x: 16 + m.stretch * 4, y: -14 }, rest: 20 },
+      ];
+  for (const spec of specs) {
+    const step = gallop ? gallopStep(phase, spec.phase) : walkStep(phase, spec.phase);
+    const x = spec.rest + step.x * blend + (1 - blend) * 0;
+    const footY = -1.2 + step.y * blend;
+    const far = side === "far";
+    const leg = coat.pattern === "point" && footY > -8 ? coat.point : coatLeg(coat, colors, far);
+    const pawColor = coat.pattern === "tuxedo" ? "#f3f0ec" : coat.pattern === "point" ? coat.point : leg;
+    if (spec.kind === "hind") hindLeg(ctx, spec.hip, { x, y: footY }, leg, pawColor, far, coat);
+    else frontLeg(ctx, spec.hip, { x, y: footY }, leg, pawColor, far, coat);
+  }
+}
+
+function walkStep(phase, offset) {
+  const p = (((phase || 0) + offset) % 1 + 1) % 1;
+  const span = 13;
+  if (p < 0.62) {
+    const u = p / 0.62;
+    return { x: span * (1 - 2 * u), y: 0 };
+  }
+  const u = (p - 0.62) / 0.38;
+  return { x: span * (-1 + 2 * u), y: -Math.sin(u * Math.PI) * 6.5 };
+}
+
+function gallopStep(phase, offset) {
+  const p = (((phase || 0) + offset) % 1 + 1) % 1;
+  const span = 16;
+  if (p < 0.4) {
+    const u = p / 0.4;
+    return { x: span * (0.35 - u), y: 0 };
+  }
+  const u = (p - 0.4) / 0.6;
+  return { x: span * (-0.65 + 1.3 * u), y: -Math.sin(u * Math.PI) * 9 };
+}
+
+function frontLeg(ctx, shoulder, foot, color, pawColor, far, coat) {
+  const elbow = {
+    x: shoulder.x - 2 + (foot.x - shoulder.x) * 0.2,
+    y: shoulder.y + (foot.y - shoulder.y) * 0.5,
+  };
+  const wrist = { x: foot.x, y: foot.y - 4.6 };
+  taper(ctx, shoulder, elbow, far ? 8.5 : 11, far ? 6.4 : 8, color);
+  taper(ctx, elbow, wrist, far ? 6.2 : 7.6, far ? 4.6 : 5.4, color);
+  if (coat.pattern === "tabby") bands(ctx, elbow, wrist, coat.stripe, far ? 0.35 : 0.5);
+  pawShape(ctx, foot.x, foot.y, pawColor, far);
+}
+
+function hindLeg(ctx, hip, foot, color, pawColor, far, coat) {
+  const stifle = {
+    x: hip.x + 4,
+    y: hip.y + (foot.y - hip.y) * 0.46,
+  };
+  const hock = { x: foot.x - 3.2, y: foot.y - 7.5 };
+  taper(ctx, hip, stifle, far ? 11 : 14, far ? 7.5 : 9, color);
+  taper(ctx, stifle, hock, far ? 6.2 : 7.2, far ? 4.4 : 5.2, color);
+  taper(ctx, hock, { x: foot.x, y: foot.y - 3.4 }, far ? 4.4 : 5, far ? 3.8 : 4.2, color);
+  if (coat.pattern === "tabby") bands(ctx, hock, { x: foot.x, y: foot.y - 3 }, coat.stripe, far ? 0.35 : 0.5);
+  pawShape(ctx, foot.x, foot.y, pawColor, far);
+}
+
+function taper(ctx, a, b, w0, w1, color) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.ellipse(x1, y1, width * 0.72, width * 0.42, 0, 0, Math.PI * 2);
+  ctx.moveTo(a.x + nx * w0 * 0.5, a.y + ny * w0 * 0.5);
+  ctx.lineTo(b.x + nx * w1 * 0.5, b.y + ny * w1 * 0.5);
+  ctx.lineTo(b.x - nx * w1 * 0.5, b.y - ny * w1 * 0.5);
+  ctx.lineTo(a.x - nx * w0 * 0.5, a.y - ny * w0 * 0.5);
+  ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = mix(color, "#fffaf6", 0.35);
-  for (const toe of [-2.2, 0, 2.1]) {
+  ctx.beginPath();
+  ctx.arc(a.x, a.y, w0 * 0.5, 0, Math.PI * 2);
+  ctx.arc(b.x, b.y, w1 * 0.5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function bands(ctx, a, b, color, alpha) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = alpha;
+  ctx.lineWidth = 1.3;
+  ctx.lineCap = "round";
+  for (const t of [0.35, 0.62]) {
+    const x = a.x + (b.x - a.x) * t;
+    const y = a.y + (b.y - a.y) * t;
     ctx.beginPath();
-    ctx.ellipse(x1 + toe, y1 + 1.2, 1.05, 0.7, 0, 0, Math.PI * 2);
+    ctx.moveTo(x - 2.2, y);
+    ctx.lineTo(x + 2.2, y + 1.2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function pawShape(ctx, x, y, color, far) {
+  const w = far ? 5.4 : 6.6;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(x, y - 0.4, w * 0.52, w * 0.34, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = mix(color, "#e8b4bc", far ? 0.22 : 0.38);
+  for (const toe of [-1.7, 0, 1.6]) {
+    ctx.beginPath();
+    ctx.ellipse(x + toe * (far ? 0.85 : 1), y + 0.7, 0.75, 0.48, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 }

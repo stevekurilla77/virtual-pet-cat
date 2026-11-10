@@ -379,6 +379,9 @@ export class Game {
     else this.updateAuto(dt, setHop);
 
     if (!hopSet) cat.hop += (0 - cat.hop) * Math.min(1, dt * 7);
+    const gaitTarget = cat.moving ? 1 : 0;
+    if (cat.gaitBlend == null) cat.gaitBlend = 0;
+    cat.gaitBlend += (gaitTarget - cat.gaitBlend) * Math.min(1, dt * 3.2);
     this.updatePupil(dt);
     this.keepCatInRoom();
     cat.drawRot = (cat.m.bodyRot || 0) + Math.sin(cat.wigglePhase) * cat.wiggleAmp;
@@ -499,7 +502,9 @@ export class Game {
     const step = Math.min(ad, speed * dt);
     cat.x += Math.sign(dx) * step;
     cat.moving = true;
-    cat.walkPhase += step / (16 * cat.scale);
+    cat.gait = this.poseName === "run" ? "gallop" : "walk";
+    const stride = (cat.gait === "gallop" ? 72 : 52) * cat.scale;
+    cat.walkPhase = ((cat.walkPhase || 0) + Math.min(0.08, step / stride)) % 1;
     return false;
   }
 
