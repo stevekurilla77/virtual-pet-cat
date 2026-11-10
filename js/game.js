@@ -420,7 +420,7 @@ export class Game {
     this.pet.touching = true;
     if (!this.pet.greeted) {
       this.pet.greeted = true;
-      this.audio.meow();
+      this.audio.meow("greet");
       this.cat.mouth = "meow";
     }
     this.strokePet(x, y, hit, 8);
@@ -1098,7 +1098,7 @@ export class Game {
       this.desiredPose(arrived ? "sit" : "walk");
       if (auto.t > 0.45 && !auto.meowed) {
         auto.meowed = true;
-        this.audio.meow();
+        this.audio.meow("greet");
         cat.mouth = "meow";
       }
       if (auto.t > 2.3) finish();

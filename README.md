@@ -36,7 +36,7 @@ Any static file server works. The page uses ES modules, so open it over `http://
 - A door on the left, or the Outside button, leads to the porch and garden once bond reaches 5. Settings can unlock everything sooner. Bond rises when you play, pet, watch birds, or scratch. Three small goals reset each day. All of that stays in `localStorage` on the phone.
 - Long-press the cat’s name three times to show a small touch readout: the last event, where it landed, the selected toy, and where the cat is headed. Long-press again three times to hide it.
 - Playful, sleepy, and happy shift what the cat does next.
-- A very quiet lullaby plays under the room, and a lighter one under the garden. They crossfade at the door. The cat purrs, meows, hisses, and chatters; birds tweet and flutter. The speaker button mutes everything. Settings has separate music and effects sliders. Press `M` on a keyboard.
+- A very quiet lullaby plays under the room, and a lighter one under the garden. They crossfade at the door. The cat’s meow, purr, hiss, and the birds are real recordings. The speaker button mutes everything. Settings has separate music and effects sliders, and a credits page. Press `M` on a keyboard.
 
 The layout respects the iPhone notch and home bar.
 
@@ -53,7 +53,7 @@ The layout respects the iPhone notch and home bar.
 | `js/coats.js` | Coats, eyes, saved cat |
 | `js/poses.js` | Body poses |
 | `js/audio.js` | Music, purr, meows, birds, scratch |
-| `audio/` | Rendered mp3 loops and voices |
+| `audio/` | Lullaby loops, plus `audio/real/` recordings |
 | `js/util.js` | Small math helpers |
 | `favicon.svg` | Icon |
 | `tools/render_audio.py` | Regenerates the mp3s. The game does not run it. |
@@ -66,4 +66,6 @@ On an iPhone, sound starts at the first tap. The page asks Safari to treat it as
 
 ## Credits
 
-All of the audio is original synthesis made for Sunbeam. There are no third-party recordings. `tools/render_audio.py` builds the files in `audio/` with NumPy: a soft felt-piano and detuned pad for the lullaby, a formant meow, a low rumble for the purr, noise for the hiss and wing flutters, and short FM chirps for the birds. The scratch, the little paw pop, and the box rustle are still made live in the browser.
+The lullaby is original music made for Sunbeam. The scratch of claws, the little paw pop, and the box rustle are still made live in the browser.
+
+Cat and bird recordings: "Weibliche Britisch Kurzhaar will Futter C1277 MIAUEN" by PantheraLeo1359531, CC BY 4.0, Wikimedia Commons. Additional recordings (CC0 / public domain) by Kerzoven, IgnasD, patchytherat, Tsester, George Miquilena, freemaster2, Luke100000, Adam Cuerden, Zabuhailo, Sadiquecat, simon.danielsson, FartMuffin, Shyamal, and Akum20, via OpenGameArt.org, Freesound.org, and Wikimedia Commons.

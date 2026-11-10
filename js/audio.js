@@ -1,26 +1,43 @@
-const fileUrl = (name) => new URL(`../audio/${name}.mp3`, import.meta.url);
+const MUSIC = new Set(["music-inside", "music-outside"]);
+const PURR_LOOP = "13_purr_loop_12s";
+const PURR_TAKE = "14_purr_long_whiskers";
+const BIRDSONG = "25_birdsong_ambient";
+
+const fileUrl = (name) => new URL(
+  MUSIC.has(name) ? `../audio/${name}.mp3` : `../audio/real/${name}.mp3`,
+  import.meta.url,
+);
 
 const GROUPS = {
-  greet: ["meow-greet-1", "meow-greet-2", "meow-greet-3"],
-  curious: ["meow-curious-1", "meow-curious-2"],
-  hungry: ["meow-hungry-1", "meow-hungry-2"],
-  kitten: ["meow-kitten-1", "meow-kitten-2"],
-  chatter: ["chatter-1", "chatter-2"],
-  chirrup: ["chirrup-1", "chirrup-2"],
-  tweet: ["tweet-1", "tweet-2", "tweet-3", "tweet-4", "tweet-5", "tweet-6"],
-  song: ["song-1", "song-2"],
-  hiss: ["hiss"],
-  growl: ["growl"],
-  yowl: ["yowl"],
-  wing: ["wing"],
+  greet: [
+    "11_kitten_mew_1",
+    "12_kitten_mew_2",
+    "11_kitten_mew_1",
+    "12_kitten_mew_2",
+    "01_meow_greeting_short",
+    "02_meow_greeting_soft",
+    "03_meow_greeting_clear",
+  ],
+  curious: ["04_meow_curious_short", "06_meow_siamese", "02_meow_greeting_soft"],
+  hungry: ["07_meow_food", "08_meow_with_purr", "09_meow_hungry_pleading", "10_meow_whiney_pleading"],
+  kitten: ["11_kitten_mew_1", "12_kitten_mew_2"],
+  chatter: ["11_kitten_mew_1", "12_kitten_mew_2", "04_meow_curious_short"],
+  chirrup: ["11_kitten_mew_1", "12_kitten_mew_2", "01_meow_greeting_short"],
+  tweet: ["23_bird_chirps_short", "24_bird_tweets"],
+  song: ["24_bird_tweets", "23_bird_chirps_short"],
+  hiss: ["15_hiss", "16_hiss_short", "17_hiss_close", "18_hiss_spit"],
+  growl: ["19_growl_short"],
+  yowl: ["20_yowl_short", "21_yowl_attack"],
+  wing: ["23_bird_chirps_short"],
 };
 
 const NAMES = [
   "music-inside",
   "music-outside",
-  "purr",
-  "birdsong",
-  ...Object.values(GROUPS).flat(),
+  PURR_LOOP,
+  PURR_TAKE,
+  BIRDSONG,
+  ...new Set(Object.values(GROUPS).flat()),
 ];
 
 export class AudioBus {
@@ -43,6 +60,9 @@ export class AudioBus {
     this.catAt = 0;
     this.purr = null;
     this.purrTarget = 0;
+    this.purrWanted = false;
+    this.failed = new Set();
+    this.purrSeam = null;
     this.noiseBuffer = null;
   }
 
@@ -132,12 +152,24 @@ export class AudioBus {
 
   async loadAll() {
     const entries = await Promise.all(NAMES.map(async (name) => {
-      const response = await fetch(fileUrl(name));
-      const data = await response.arrayBuffer();
-      const buffer = await this.ctx.decodeAudioData(data.slice(0));
-      return [name, buffer];
+      try {
+        const response = await fetch(fileUrl(name));
+        if (!response.ok) throw new Error(String(response.status));
+        const data = await response.arrayBuffer();
+        let buffer = await this.ctx.decodeAudioData(data.slice(0));
+        if (name === PURR_LOOP) {
+          const seamed = seamLoop(this.ctx, buffer);
+          buffer = seamed.buffer;
+          this.purrSeam = seamed.edge;
+        }
+        return [name, buffer];
+      } catch (error) {
+        this.failed.add(name);
+        console.warn("Sunbeam could not load", name);
+        return [name, null];
+      }
     }));
-    this.buffers = Object.fromEntries(entries);
+    this.buffers = Object.fromEntries(entries.filter((entry) => entry[1]));
     this.ready = true;
     this.applyMusic(0.8);
   }
@@ -161,7 +193,7 @@ export class AudioBus {
     this.ramp(this.bedGain.gain, outside ? level * 0.42 : 0, seconds);
     this.ensureLoop("room", "music-inside", this.roomGain);
     this.ensureLoop("out", "music-outside", this.outGain);
-    this.ensureLoop("bed", "birdsong", this.bedGain);
+    this.ensureLoop("bed", BIRDSONG, this.bedGain);
   }
 
   ramp(param, value, seconds) {
@@ -199,15 +231,26 @@ export class AudioBus {
   }
 
   play(name, { rate = 1, gain = 1 } = {}) {
-    if (!this.ctx || !this.buffers[name] || this.sfxLevel() <= 0) return;
+    if (!this.ctx || this.sfxLevel() <= 0) return null;
+    const buffer = this.buffers[name];
+    if (!buffer) {
+      if (this.failed.has(name)) this.fallbackVoice();
+      return null;
+    }
     const src = this.ctx.createBufferSource();
-    src.buffer = this.buffers[name];
+    src.buffer = buffer;
     src.playbackRate.value = rate;
     const amp = this.ctx.createGain();
-    amp.gain.value = Math.max(0.0001, gain * this.sfxLevel());
+    const level = gain * this.sfxLevel() * (0.86 + Math.random() * 0.22);
+    amp.gain.value = Math.max(0.0001, level);
     src.connect(amp);
     amp.connect(this.sfxBus);
     src.start();
+    return src;
+  }
+
+  fallbackVoice() {
+    this.tone({ type: "sine", f0: 520, f1: 360, f2: 440, duration: 0.22, peak: 0.04 });
   }
 
   pick(group) {
@@ -219,7 +262,7 @@ export class AudioBus {
   }
 
   vary(center = 1) {
-    return center * (0.96 + Math.random() * 0.08);
+    return center * (0.94 + Math.random() * 0.12);
   }
 
   catVoice(group, gain = 0.9, rate) {
@@ -229,9 +272,9 @@ export class AudioBus {
     this.play(this.pick(group), { rate: rate || this.vary(), gain });
   }
 
-  meow(kind = "greet") {
-    const group = GROUPS[kind] ? kind : "greet";
-    this.catVoice(group, group === "kitten" ? 0.7 : 0.9);
+  meow(kind = "kitten") {
+    const group = kind === "greet" || !GROUPS[kind] ? "greet" : kind;
+    this.catVoice(group, group === "kitten" || group === "greet" ? 0.62 : 0.7);
   }
 
   mrrp() {
@@ -242,8 +285,8 @@ export class AudioBus {
     this.catVoice("chatter", 0.72);
   }
 
-  tweet(pitch = 1) {
-    this.play(this.pick("tweet"), { rate: this.vary(0.9 + pitch * 0.18), gain: 0.62 });
+  tweet() {
+    this.play(this.pick("tweet"), { rate: this.vary(), gain: 0.55 });
   }
 
   song() {
@@ -277,21 +320,57 @@ export class AudioBus {
   }
 
   setPurr(on, amount = 1) {
-    if (!this.ctx || !this.buffers.purr) return;
-    const target = on && this.sfxLevel() > 0 ? this.sfxLevel() * 0.5 * amount : 0;
+    this.purrWanted = Boolean(on);
+    this.purrAmount = amount;
+    if (!this.ctx || !this.buffers[PURR_LOOP]) {
+      if (on && this.failed.has(PURR_LOOP)) this.fallbackVoice();
+      return;
+    }
+    const target = on && this.sfxLevel() > 0 ? this.sfxLevel() * 0.46 * amount : 0;
     if (this.purr && Math.abs(target - this.purrTarget) < 0.025) return;
     this.purrTarget = target;
     if (!this.purr && target > 0.001) {
-      const src = this.ctx.createBufferSource();
-      src.buffer = this.buffers.purr;
-      src.loop = true;
-      const gain = this.ctx.createGain();
-      gain.gain.value = 0.0001;
-      src.connect(gain);
-      gain.connect(this.sfxBus);
-      src.start();
-      this.purr = { src, gain };
+      if (Math.random() < 0.3 && this.buffers[PURR_TAKE]) this.startPurrTake(target);
+      else this.startPurrLoop(target);
+      return;
     }
+    this.fadePurr(target);
+  }
+
+  startPurrLoop(target) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.buffers[PURR_LOOP];
+    src.loop = true;
+    src.playbackRate.value = this.vary();
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0.0001;
+    src.connect(gain);
+    gain.connect(this.sfxBus);
+    src.start();
+    this.purr = { src, gain, loop: true };
+    this.fadePurr(target);
+  }
+
+  startPurrTake(target) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.buffers[PURR_TAKE];
+    src.playbackRate.value = this.vary();
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0.0001;
+    src.connect(gain);
+    gain.connect(this.sfxBus);
+    const voice = { src, gain, loop: false };
+    src.onended = () => {
+      if (this.purr !== voice) return;
+      this.purr = null;
+      if (this.purrWanted) this.startPurrLoop(this.purrTarget || target);
+    };
+    src.start();
+    this.purr = voice;
+    this.fadePurr(target);
+  }
+
+  fadePurr(target) {
     if (!this.purr) return;
     const now = this.ctx.currentTime;
     const param = this.purr.gain.gain;
@@ -301,6 +380,7 @@ export class AudioBus {
     if (target <= 0.001) {
       const old = this.purr;
       this.purr = null;
+      this.purrWanted = false;
       old.src.stop(now + 0.5);
     }
   }
@@ -374,6 +454,24 @@ export class AudioBus {
     osc.start(start);
     osc.stop(start + duration + 0.02);
   }
+}
+
+function seamLoop(ctx, buffer) {
+  const rate = buffer.sampleRate;
+  const fade = Math.min(Math.floor(0.08 * rate), Math.floor(buffer.length / 8));
+  const src = buffer.getChannelData(0);
+  const outLen = src.length - fade;
+  const out = ctx.createBuffer(1, outLen, rate);
+  const dst = out.getChannelData(0);
+  dst.set(src.subarray(0, outLen));
+  for (let i = 0; i < fade; i++) {
+    const t = i / Math.max(1, fade - 1);
+    const keepTail = Math.cos(t * Math.PI / 2);
+    const bringHead = Math.sin(t * Math.PI / 2);
+    dst[i] = src[src.length - fade + i] * keepTail + src[i] * bringHead;
+  }
+  const edge = Math.abs(dst[0] - dst[outLen - 1]);
+  return { buffer: out, edge };
 }
 
 function clamp01(value) {

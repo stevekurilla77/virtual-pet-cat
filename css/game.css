@@ -175,7 +175,32 @@ button:focus-visible, input:focus-visible {
   pointer-events: auto;
 }
 
-#settings[hidden] { display: none !important; }
+#settings[hidden], #credits[hidden] { display: none !important; }
+
+#credits {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-items: end center;
+  padding: 16px;
+  background: rgba(74, 52, 40, 0.28);
+  pointer-events: auto;
+}
+
+#credits .panel {
+  width: min(100%, 360px);
+  margin-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  padding: 16px;
+  border-radius: 18px;
+  background: #fff8f2;
+  color: var(--ink);
+  box-shadow: 0 12px 40px rgba(74, 52, 40, 0.2);
+}
+
+#credits h2 { margin: 0 0 8px; font-size: 18px; }
+#credits p { margin: 0 0 10px; font-size: 14px; line-height: 1.45; }
+#credits button { width: 100%; margin-top: 8px; }
 
 #settings .panel {
   width: min(100%, 360px);

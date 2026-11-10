@@ -49,6 +49,9 @@ const musicVolume = document.querySelector("#music-volume");
 const sfxVolume = document.querySelector("#sfx-volume");
 const musicToggle = document.querySelector("#music-toggle");
 const sfxToggle = document.querySelector("#sfx-toggle");
+const creditsEl = document.querySelector("#credits");
+const creditsOpen = document.querySelector("#credits-open");
+const creditsClose = document.querySelector("#credits-close");
 const goalList = document.querySelector("#goal-list");
 const bondReadout = document.querySelector("#bond-readout");
 
@@ -268,6 +271,12 @@ function bindControls() {
   settingsClose.addEventListener("click", () => {
     settingsEl.hidden = true;
   });
+  creditsOpen.addEventListener("click", () => {
+    creditsEl.hidden = false;
+  });
+  creditsClose.addEventListener("click", () => {
+    creditsEl.hidden = true;
+  });
   unlockAllBtn.addEventListener("click", () => {
     game.setUnlockAll(!game.unlockAll);
     paintGoals(game.goalSnapshot && { goals: game.goalSnapshot(), bond: game.bond, unlockAll: game.unlockAll, scene: game.scene, outsideOpen: game.outsideUnlocked() });
@@ -330,7 +339,7 @@ const debugEl = document.querySelector("#touch-debug");
 
 function isControl(target) {
   if (!target || !target.closest) return false;
-  return Boolean(target.closest("#dock, #chrome, #settings, #picker, button, input, a, label"));
+  return Boolean(target.closest("#dock, #chrome, #settings, #credits, #picker, button, input, a, label"));
 }
 
 let lastNotice = "";
