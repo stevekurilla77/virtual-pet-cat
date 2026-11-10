@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#F3C7AA">
+  <meta name="description" content="Sunbeam is a small virtual pet cat. No account, no ads, nothing leaves the phone.">
+  <title>Sunbeam</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/game.css">
+  <script>
+    try {
+      if (localStorage.getItem("sunbeam-cat")) document.documentElement.classList.add("has-cat");
+    } catch (error) {}
+  </script>
+</head>
+<body>
+  <div id="app">
+    <canvas id="room" aria-label="Sunbeam, your cat’s room"></canvas>
+    <div id="hud" hidden>
+      <div id="topbar">
+        <div id="cat-label">Miso</div>
+        <div class="moods">
+          <div class="mood">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#f0a03a" d="M8 1.2 9.4 6H14l-3.7 2.7 1.4 4.6L8 10.6 4.3 13.3 5.7 8.7 2 6h4.6z"/></svg>
+            <span class="bar" id="bar-play" role="meter" aria-label="Playful" aria-valuemin="0" aria-valuemax="100" aria-valuenow="48"><span></span></span>
+          </div>
+          <div class="mood">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#7d90d6" d="M8.2 2a5.2 5.2 0 1 0 5.4 7.6A4.4 4.4 0 0 1 8.2 2z"/></svg>
+            <span class="bar" id="bar-sleep" role="meter" aria-label="Sleepy" aria-valuemin="0" aria-valuemax="100" aria-valuenow="30"><span></span></span>
+          </div>
+          <div class="mood">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#e86b8a" d="M8 13.2S2.4 9.4 2.4 6.1A2.7 2.7 0 0 1 8 5.2a2.7 2.7 0 0 1 5.6.9c0 3.3-5.6 7.1-5.6 7.1z"/></svg>
+            <span class="bar" id="bar-happy" role="meter" aria-label="Happy" aria-valuemin="0" aria-valuemax="100" aria-valuenow="66"><span></span></span>
+          </div>
+        </div>
+        <button id="mute" class="iconbtn" type="button" aria-pressed="false" aria-label="Mute sounds">
+          <svg class="on" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9h3l5-4v14l-5-4H4z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M16 9.5a4 4 0 0 1 0 5M18.5 7a7 7 0 0 1 0 10"/></svg>
+          <svg class="off" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9h3l5-4v14l-5-4H4z"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M16 10l5 5M21 10l-5 5"/></svg>
+        </button>
+        <button id="edit" class="iconbtn" type="button" aria-label="Change your cat">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 16.5V20h3.5L18 9.5 14.5 6z"/><path fill="currentColor" d="M16 4.5 19.5 8 21 6.5 17.5 3z"/></svg>
+        </button>
+      </div>
+      <p id="hint"></p>
+      <div id="tray" role="toolbar" aria-label="Toys">
+        <button class="toy" type="button" data-tool="wand" aria-pressed="false">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 26c8-2 12-8 14-14" fill="none" stroke="#C9843A" stroke-width="3" stroke-linecap="round"/><path d="M20 12c4-6 10-8 12-6-2 4-6 6-10 8z" fill="#F07A8A"/><path d="M20 12c2 4 4 8 8 10-4-1-7-3-9-6z" fill="#F8C9A4"/></svg>
+          Feather
+        </button>
+        <button class="toy" type="button" data-tool="laser" aria-pressed="false">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="10" fill="#ffd0d4"/><circle cx="16" cy="16" r="4" fill="#ff2d3a"/><circle cx="14.5" cy="14.5" r="1.3" fill="#fff"/></svg>
+          Laser
+        </button>
+        <button class="toy" type="button" data-tool="yarn" aria-pressed="false">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="17" r="8" fill="#E23B4A"/><path d="M10 16c4 2 8-2 12 1M11 20c4-2 7 1 10-1" fill="none" stroke="#F7D0A8" stroke-width="1.4"/><path d="M22 14c4-2 6 2 4 5" fill="none" stroke="#F2C14B" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Yarn
+        </button>
+        <button class="toy" type="button" data-tool="pet" aria-pressed="false">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M9 18c0-4 2-8 7-8s7 4 7 8-2 7-7 7-7-3-7-7z" fill="#F6C7A4" stroke="#4A3428" stroke-width="1.6"/><path d="M12 14c.4-3 1.2-5 2-5M16 13V9M20 14c-.4-3-1.2-5-2-5" fill="none" stroke="#4A3428" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Pet
+        </button>
+        <button class="toy" type="button" data-tool="box" aria-pressed="false">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 13h14v10H7z" fill="#E2B56E" stroke="#8A5A32" stroke-width="1.6"/><path d="M21 15l5 2v8l-5-2z" fill="#C9925A" stroke="#8A5A32" stroke-width="1.6"/><path d="M7 13l6-4h10l-6 4" fill="#F0D2A0" stroke="#8A5A32" stroke-width="1.6"/></svg>
+          Box
+        </button>
+      </div>
+    </div>
+
+    <div id="picker">
+      <form class="sheet" id="cat-form">
+        <header>
+          <p class="eyebrow">Sunbeam</p>
+          <h1 id="picker-title">Who lives here?</h1>
+          <p class="lede">A coat, a name, and a pair of eyes. The window is already full of birds.</p>
+        </header>
+        <canvas id="preview" width="640" height="460" aria-label="Live preview of your cat"></canvas>
+        <label class="field">
+          <span>Name</span>
+          <input id="cat-name" name="name" type="text" maxlength="14" placeholder="Miso" autocomplete="off" autocapitalize="words" enterkeyhint="done">
+        </label>
+        <fieldset>
+          <legend>This cat is</legend>
+          <div class="seg" id="gender">
+            <button type="button" data-value="girl" aria-pressed="true">Girl</button>
+            <button type="button" data-value="boy" aria-pressed="false">Boy</button>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Coat</legend>
+          <div class="seg" id="hair">
+            <button type="button" data-value="short" aria-pressed="true">Short hair</button>
+            <button type="button" data-value="long" aria-pressed="false">Long and fluffy</button>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Color</legend>
+          <p id="coat-name" class="choice">Orange tabby</p>
+          <div class="swatches" id="coats"></div>
+        </fieldset>
+        <fieldset>
+          <legend>Eyes</legend>
+          <div class="swatches eyes" id="eyes"></div>
+        </fieldset>
+        <div class="actions">
+          <button id="start" class="primary" type="submit">Come sit by the window</button>
+          <button id="cancel" class="ghost" type="button" hidden>Keep them as they are</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <noscript>Sunbeam needs JavaScript to draw the cat. Nothing is downloaded and nothing is sent anywhere.</noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
