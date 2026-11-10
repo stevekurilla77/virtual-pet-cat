@@ -193,6 +193,30 @@ button:focus-visible, input:focus-visible {
 #goal-list li { padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
 #goal-list li.done { color: #3f7a3a; }
 #settings button { width: 100%; margin-top: 8px; }
+.sound-settings {
+  margin: 8px 0 4px;
+  padding: 8px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.sound-settings legend {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+.sound-settings .slider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 14px;
+}
+.sound-settings input[type="range"] {
+  width: 58%;
+  touch-action: pan-x;
+  accent-color: #c4622a;
+}
 #unlock-all[aria-pressed="true"] { box-shadow: 0 0 0 2px #c4622a; }
 
 .iconbtn {

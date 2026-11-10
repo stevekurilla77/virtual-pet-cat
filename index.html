@@ -88,6 +88,17 @@
         <h2 id="settings-title">Today with Miso</h2>
         <p id="bond-readout">Bond 0</p>
         <ul id="goal-list"></ul>
+        <fieldset class="sound-settings">
+          <legend>Sound</legend>
+          <label class="slider">Music
+            <input id="music-volume" type="range" min="0" max="100" value="32" aria-label="Music volume">
+          </label>
+          <button id="music-toggle" type="button" aria-pressed="false">Music on</button>
+          <label class="slider">Sound effects
+            <input id="sfx-volume" type="range" min="0" max="100" value="80" aria-label="Sound effects volume">
+          </label>
+          <button id="sfx-toggle" type="button" aria-pressed="false">Effects on</button>
+        </fieldset>
         <button id="unlock-all" type="button" aria-pressed="false">Unlock everything</button>
         <button id="settings-close" class="ghost" type="button">Close</button>
       </div>

@@ -121,6 +121,7 @@ export class Game {
     this.fade = 0;
     this.fadeTrip = null;
     this.adoptProgress(config);
+    if (this.audio.setPlace) this.audio.setPlace("room");
     this.resize();
   }
 
@@ -149,7 +150,11 @@ export class Game {
 
   setTool(tool) {
     this.audio.unlock();
+    const engaged = this.wand.active || this.laser.active || (this.yarn && (this.yarn.held || this.yarn.engaged));
     const next = this.tool === tool ? null : tool;
+    if (engaged && (next == null || (next !== "wand" && next !== "laser" && next !== "yarn"))) {
+      this.audio.yowl();
+    }
     this.tool = next;
     this.wand.active = false;
     this.laser.active = false;
@@ -250,7 +255,9 @@ export class Game {
       this.requestInside();
       return;
     }
+    const poked = catHit(this.cat, x, y);
     const boxHit = this.scene === "room" && hitBox(this.room.box, x, y);
+    if (poked.body && !boxHit && (this.tool === "pet" || this.tool === null)) this.notePoke();
     const direct = catHit(this.cat, x, y);
     const lifted = this.aboveFinger(x, y, 48);
     const raised = catHit(this.cat, lifted.x, lifted.y);
@@ -468,7 +475,6 @@ export class Game {
     cat.squash += (1 - cat.squash) * Math.min(1, dt * 8);
     if (!this.pet.touching) cat.purr = Math.max(0, cat.purr - dt * 1.4);
     cat.squint += ((this.pet.touching ? 1 : this.hoverSquint()) - cat.squint) * Math.min(1, dt * 6);
-    this.audio.setPurr(cat.purr > 0.2 && this.pet.touching && this.grab <= 0);
     this.pounceCd = Math.max(0, this.pounceCd - dt);
     this.pet.cool = Math.max(0, this.pet.cool - dt);
     this.glass = Math.max(0, this.glass - dt * 1.6);
@@ -517,6 +523,10 @@ export class Game {
     this.updateEffects(dt);
     this.decayPrints(dt);
     if (this.scene === "room" && this.maybeNoticeBird()) this.startBirdShow();
+    const petting = this.pet.touching && this.grab <= 0 && cat.purr > 0.15;
+    const cozy = !petting && (cat.asleep || (this.moods.happy > 0.7 && this.moods.playful < 0.62 && !cat.moving && cat.excited < 0.15 && !this.birdShow));
+    this.audio.setPurr(petting || cozy, petting ? 1 : 0.32);
+    this.maybeVoice(dt);
     this.emit();
   }
 
@@ -779,7 +789,7 @@ export class Game {
     this.pet.belly = 0;
     this.pet.cool = 4.2;
     this.pet.touching = false;
-    this.audio.meow();
+    this.audio.meow("kitten");
     this.moods.playful = clamp01(this.moods.playful + 0.2);
     this.cat.mouth = "meow";
   }
@@ -1271,7 +1281,9 @@ export class Game {
           bird.x = bird.perchX;
           bird.y = bird.perchY;
           bird.leaveAt = this.time + 9 + Math.random() * 7;
+          this.audio.wing();
           this.audio.tweet(BIRD_PITCH[bird.spec.id] || 1);
+          if (Math.random() < 0.35) this.audio.song();
         }
       } else if (bird.state === "perch" || bird.state === "peck") {
         bird.peckIn -= dt;
@@ -1280,10 +1292,13 @@ export class Game {
           bird.peckT = 0.22;
           bird.peckIn = 0.8 + Math.random() * 1.3;
         }
-        if (this.time > bird.leaveAt && !this.birdShow) {
+        const watching = this.birdShow && (this.birdShow.phase === "look" || this.birdShow.phase === "chatter");
+        if (this.time > bird.leaveAt && (!this.birdShow || watching)) {
           bird.state = "leave";
           bird.vx = (bird.x < win.x + win.w / 2 ? -1 : 1) * (70 + Math.random() * 30);
           bird.vy = -50 - Math.random() * 20;
+          this.audio.wing();
+          if (watching) this.audio.annoyed();
         }
       } else if (bird.state === "scatter" || bird.state === "leave") {
         bird.x += bird.vx * dt;
@@ -1340,8 +1355,10 @@ export class Game {
       bird.vy = -80 - Math.random() * 40;
       bird.dir = side;
     }
+    this.audio.wing();
     this.audio.tweet(1.2);
     this.audio.tweet(0.85);
+    if (this.birdShow) this.audio.annoyed();
   }
 
   updateEffects(dt) {
@@ -1496,6 +1513,34 @@ export class Game {
     if (this.dirty && this.time - (this.savedAt || 0) > 1.2) this.flushSave();
   }
 
+  notePoke() {
+    const now = this.time;
+    this.pokeTimes = (this.pokeTimes || []).filter((stamp) => now - stamp < 1.5);
+    this.pokeTimes.push(now);
+    if (this.pokeTimes.length < 5 || now - (this.annoyAt || 0) < 1.8) return;
+    this.annoyAt = now;
+    this.pokeTimes = [];
+    this.annoyCount = (this.annoyCount || 0) + 1;
+    if (this.annoyCount === 1) this.audio.hiss();
+    else if (this.annoyCount === 2) this.audio.growl();
+    else this.audio.yowl();
+    this.moods.happy = clamp01(this.moods.happy - 0.08);
+    if (this.cat) {
+      this.cat.mouth = "meow";
+      this.cat.squint = 1;
+    }
+  }
+
+  maybeVoice(dt) {
+    this.voiceCd = (this.voiceCd == null ? 12 : this.voiceCd) - dt;
+    if (this.voiceCd > 0 || !this.cat) return;
+    if (this.wand.active || this.laser.active || this.pet.touching || this.birdShow || this.fadeTrip) return;
+    if (this.moods.playful < 0.34 && this.moods.happy < 0.58 && !this.cat.moving) {
+      this.audio.meow("hungry");
+      this.voiceCd = 48;
+    }
+  }
+
   notify(text) {
     this.notice = text;
     this.noticeUntil = this.time + 2.1;
@@ -1639,6 +1684,7 @@ export class Game {
     if (arrived && cmd.t > 0.18) {
       this.command = null;
       this.fadeTrip = { dest: leaving ? "out" : "room", t: 0, phase: "out" };
+      this.audio.setPlace(this.fadeTrip.dest);
     }
     this.lerpPose(dt);
   }

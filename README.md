@@ -36,7 +36,7 @@ Any static file server works. The page uses ES modules, so open it over `http://
 - A door on the left, or the Outside button, leads to the porch and garden once bond reaches 5. Settings can unlock everything sooner. Bond rises when you play, pet, watch birds, or scratch. Three small goals reset each day. All of that stays in `localStorage` on the phone.
 - Long-press the cat’s name three times to show a small touch readout: the last event, where it landed, the selected toy, and where the cat is headed. Long-press again three times to hide it.
 - Playful, sleepy, and happy shift what the cat does next.
-- Sound is synthesized in the browser. The speaker button mutes it. Press `M` on a keyboard.
+- A very quiet lullaby plays under the room, and a lighter one under the garden. They crossfade at the door. The cat purrs, meows, hisses, and chatters; birds tweet and flutter. The speaker button mutes everything. Settings has separate music and effects sliders. Press `M` on a keyboard.
 
 The layout respects the iPhone notch and home bar.
 
@@ -52,6 +52,18 @@ The layout respects the iPhone notch and home bar.
 | `js/kitten.js` | The cat, including the tail anchored to the rump |
 | `js/coats.js` | Coats, eyes, saved cat |
 | `js/poses.js` | Body poses |
-| `js/audio.js` | Purr, meow, chirp, tweets |
+| `js/audio.js` | Music, purr, meows, birds, scratch |
+| `audio/` | Rendered mp3 loops and voices |
 | `js/util.js` | Small math helpers |
 | `favicon.svg` | Icon |
+| `tools/render_audio.py` | Regenerates the mp3s. The game does not run it. |
+
+## Sound
+
+The lullaby is about 48 beats a minute: long felt-piano notes, a soft pad, and lots of quiet. Outside, the same tune grows a few very light high tones. Music stays under the sound effects, and the music slider starts low.
+
+On an iPhone, sound starts at the first tap. The page asks Safari to treat it as ambient audio, so the silent switch can quiet it. Music pauses when you leave the page and comes back when you return.
+
+## Credits
+
+All of the audio is original synthesis made for Sunbeam. There are no third-party recordings. `tools/render_audio.py` builds the files in `audio/` with NumPy: a soft felt-piano and detuned pad for the lullaby, a formant meow, a low rumble for the purr, noise for the hiss and wing flutters, and short FM chirps for the birds. The scratch, the little paw pop, and the box rustle are still made live in the browser.

@@ -166,6 +166,7 @@ export function defaultCat() {
     day: "",
     goals: { birds: 0, scratch: 0, play: 0 },
     goalBonus: {},
+    sound: { music: 0.32, musicOn: true, effects: 0.8, effectsOn: true },
   };
 }
 
@@ -215,6 +216,18 @@ export function normalizeCat(raw) {
       scratch: Boolean(bonus.scratch),
       play: Boolean(bonus.play),
     },
+    sound: normalizeSound(raw.sound),
+  };
+}
+
+function normalizeSound(raw) {
+  const base = { music: 0.32, musicOn: true, effects: 0.8, effectsOn: true };
+  if (!raw || typeof raw !== "object") return base;
+  return {
+    music: clampMood(raw.music, base.music),
+    musicOn: raw.musicOn == null ? true : Boolean(raw.musicOn),
+    effects: clampMood(raw.effects, base.effects),
+    effectsOn: raw.effectsOn == null ? true : Boolean(raw.effectsOn),
   };
 }
 

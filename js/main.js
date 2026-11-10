@@ -45,6 +45,10 @@ const settingsEl = document.querySelector("#settings");
 const settingsOpen = document.querySelector("#settings-open");
 const settingsClose = document.querySelector("#settings-close");
 const unlockAllBtn = document.querySelector("#unlock-all");
+const musicVolume = document.querySelector("#music-volume");
+const sfxVolume = document.querySelector("#sfx-volume");
+const musicToggle = document.querySelector("#music-toggle");
+const sfxToggle = document.querySelector("#sfx-toggle");
 const goalList = document.querySelector("#goal-list");
 const bondReadout = document.querySelector("#bond-readout");
 
@@ -100,14 +104,19 @@ window.addEventListener("resize", () => {
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
+    audio.pauseForHide();
     persist();
     return;
   }
+  audio.resumeFromHide();
   last = performance.now();
   requestAnimationFrame(loop);
 });
 
-window.addEventListener("pagehide", persist);
+window.addEventListener("pagehide", () => {
+  audio.pauseForHide();
+  persist();
+});
 
 requestAnimationFrame(loop);
 
@@ -263,6 +272,28 @@ function bindControls() {
     game.setUnlockAll(!game.unlockAll);
     paintGoals(game.goalSnapshot && { goals: game.goalSnapshot(), bond: game.bond, unlockAll: game.unlockAll, scene: game.scene, outsideOpen: game.outsideUnlocked() });
   });
+  musicVolume.addEventListener("input", () => {
+    audio.unlock();
+    audio.setMix({ music: musicVolume.value / 100 });
+    storeSound();
+  });
+  sfxVolume.addEventListener("input", () => {
+    audio.unlock();
+    audio.setMix({ effects: sfxVolume.value / 100 });
+    storeSound();
+  });
+  musicToggle.addEventListener("click", () => {
+    audio.unlock();
+    audio.setMix({ musicOn: !audio.musicOn });
+    syncSoundControls();
+    storeSound();
+  });
+  sfxToggle.addEventListener("click", () => {
+    audio.unlock();
+    audio.setMix({ effectsOn: !audio.sfxOn });
+    syncSoundControls();
+    storeSound();
+  });
 
   trayToggle.addEventListener("click", () => {
     const open = dock.classList.toggle("collapsed");
@@ -306,6 +337,7 @@ let lastNotice = "";
 
 function openSettings() {
   settingsEl.hidden = false;
+  syncSoundControls();
   paintGoals({
     goals: game.goalSnapshot(),
     bond: game.bond,
@@ -485,16 +517,35 @@ function openRoom(config, intro) {
   label.textContent = config.name;
   document.title = `${config.name} · Sunbeam`;
   audio.setMuted(Boolean(config.mute));
+  audio.setMix(config.sound);
   muteBtn.classList.toggle("is-muted", Boolean(config.mute));
   muteBtn.setAttribute("aria-pressed", config.mute ? "true" : "false");
+  syncSoundControls();
   requestAnimationFrame(() => {
     if (intro || !game.cat) game.setConfig(config, true);
     else game.updateAppearance(config);
     game.resize(measureUi());
     game.running = true;
     game.syncHint();
+    audio.setPlace(game.scene || "room");
     last = performance.now();
   });
+}
+
+function syncSoundControls() {
+  if (!musicVolume) return;
+  musicVolume.value = String(Math.round(audio.musicVol * 100));
+  sfxVolume.value = String(Math.round(audio.sfxVol * 100));
+  musicToggle.textContent = audio.musicOn ? "Music on" : "Music off";
+  musicToggle.setAttribute("aria-pressed", audio.musicOn ? "true" : "false");
+  sfxToggle.textContent = audio.sfxOn ? "Effects on" : "Effects off";
+  sfxToggle.setAttribute("aria-pressed", audio.sfxOn ? "true" : "false");
+}
+
+function storeSound() {
+  if (!saved) return;
+  saved.sound = audio.snapshot();
+  saveCat(saved);
 }
 
 function measureUi() {
@@ -513,6 +564,7 @@ function persist() {
   if (!saved) return;
   if (game.cat) saved.mood = { ...game.moods };
   saved.mute = audio.muted;
+  saved.sound = audio.snapshot();
   saveCat(saved);
 }
 
