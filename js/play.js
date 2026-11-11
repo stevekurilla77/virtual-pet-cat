@@ -544,6 +544,15 @@ function body(player) {
 function movePlayer(state, dt, input) {
   const player = state.player;
   const solids = state.level.solids.filter((item) => item.kind !== "pond");
+  if (player.ride) {
+    player.prevJump = !!input.jumpPressed;
+    player.onGround = true;
+    player.vx = 0;
+    player.vy = 0;
+    player.x = player.ride.x - 16;
+    player.y = GROUND - 72;
+    return;
+  }
   if (state.fishing) {
     player.vx = 0;
     return;
@@ -688,6 +697,8 @@ function respawn(state) {
   player.swipeHit = false;
   player.pounce = 0;
   player.grapple = null;
+  player.ride = null;
+  audio.hum(false, 0);
   player.airJump = false;
   player.bounce = 0;
   player.mantle = null;
@@ -771,7 +782,7 @@ function hurt(state, knock) {
     respawn(state);
     return;
   }
-  if (player.invuln > 0) return;
+  if (player.ride || player.invuln > 0) return;
   player.health -= 1;
   state.shake = 7;
   audio.sting("music-hurt");
@@ -991,7 +1002,8 @@ function updatePose(state, dt) {
   const player = state.player;
   const cat = state.cat;
   let pose = "stand";
-  if (state.won) pose = "sit";
+  if (player.ride) pose = "sit";
+  else if (state.won) pose = "sit";
   else if (player.hurt > 0) pose = "sit";
   else if (!player.onGround && player.vy < 0) pose = "pounce";
   else if (!player.onGround) pose = "stretch";
@@ -1103,7 +1115,7 @@ function step(state, dt, input) {
   }
   if (input.actionPressed) useAction(state);
   if (input.fishPressed) tryFish(state);
-  const field = updateHazards(state, dt, audio);
+  const field = updateHazards(state, dt, audio, input);
   player.slip = field.slip;
   player.wind = field.wind;
   if (field.bounce) player.bounce = field.bounce;
@@ -1603,13 +1615,20 @@ function aimCamera(state, viewW, viewH) {
   const floorHigh = GROUND - viewH * 0.70;
   const floorLow = GROUND - viewH * 0.96;
   if (!tall) desiredY = Math.max(floorLow, Math.min(floorHigh, desiredY));
+  if ((state.canHold || 0) > 0) {
+    const prize = (state.level.cans || []).find((item) => !item.got && Math.abs(item.x - player.x) < 200);
+    if (prize) {
+      const look = prize.y - viewH * 0.32;
+      if ((GROUND - look) / viewH >= 0.7) desiredY = look;
+    }
+  }
   if (state.snapCam) {
     state.camX = targetX;
     state.camY = falling ? groundCam : desiredY;
     state.snapCam = false;
   } else {
     state.camX += (targetX - state.camX) * 0.08;
-    state.camY += (desiredY - state.camY) * (tall ? 0.06 : 0.045);
+    state.camY += (desiredY - state.camY) * ((state.canHold || 0) > 0 ? 0.14 : tall ? 0.06 : 0.045);
   }
 }
 
@@ -1703,6 +1722,17 @@ function drawWorld(state) {
   const reunion = state.won || Math.abs(state.player.x - level.owner.x) < 120;
   drawOwner(ctx, level.owner, state.time, level.theme, reunion);
   drawCatShadow(ctx, state);
+  if (state.player.ride) {
+    ctx.save();
+    ctx.translate(state.player.x + 16, state.player.y + 30);
+    ctx.globalAlpha = 0.45 + Math.sin(state.time * 7) * 0.15;
+    ctx.strokeStyle = "#d7f3ff";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 30, 36, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   if (state.player.food > 0) {
     ctx.save();
     ctx.translate(state.player.x + 16, state.player.y + 30);
@@ -1842,7 +1872,9 @@ function paintHud() {
   fishBtn.hidden = !(state.gotRod && nearWater);
   const ring = document.querySelector("#food-ring");
   if (ring) {
-    const left = state.player.food || 0;
+    const rideLeft = state.player.ride ? state.player.ride.ride || 0 : 0;
+    const left = rideLeft || state.player.food || 0;
+    const total = rideLeft ? 10 : 9;
     ring.hidden = left <= 0;
     if (left > 0) {
       const pen = ring.getContext("2d");
@@ -1852,9 +1884,9 @@ function paintHud() {
       pen.beginPath();
       pen.arc(18, 18, 12, 0, Math.PI * 2);
       pen.stroke();
-      pen.strokeStyle = "#e2b84a";
+      pen.strokeStyle = rideLeft ? "#7ec8ff" : "#e2b84a";
       pen.beginPath();
-      pen.arc(18, 18, 12, -Math.PI / 2, -Math.PI / 2 + (left / 9) * Math.PI * 2);
+      pen.arc(18, 18, 12, -Math.PI / 2, -Math.PI / 2 + (left / total) * Math.PI * 2);
       pen.stroke();
     }
   }
@@ -2577,6 +2609,37 @@ function tapChoice() {
   };
 }
 
+function rideTest() {
+  const trial = fresh(quietProgress(), 0);
+  trial.mode = "play";
+  for (let i = 0; i < 6; i++) step(trial, 1 / 60, still());
+  const roomba = trial.level.hazards.find((item) => item.kind === "roomba");
+  trial.player.x = roomba.x - 16;
+  trial.player.y = GROUND - PH - 26;
+  trial.player.vy = 80;
+  trial.player.onGround = false;
+  let started = false;
+  for (let i = 0; i < 20; i++) {
+    step(trial, 1 / 60, still());
+    if (trial.player.ride) started = true;
+  }
+  const x0 = trial.player.x;
+  for (let i = 0; i < 40; i++) step(trial, 1 / 60, still());
+  const moved = started && Math.abs(trial.player.x - x0) > 12;
+  const during = Number.isFinite(trial.player.x) && trial.player.y < GROUND;
+  if (trial.player.ride) trial.player.ride.ride = 0.02;
+  for (let i = 0; i < 70; i++) step(trial, 1 / 60, still());
+  return {
+    started,
+    moved,
+    during,
+    ended: !trial.player.ride,
+    y: Math.round(trial.player.y),
+    finite: Number.isFinite(trial.player.x) && Number.isFinite(trial.player.y),
+    inWorld: trial.player.y < 800 && trial.player.x > -20 && trial.player.x < trial.level.width,
+  };
+}
+
 function climbTest(id) {
   const index = LEVELS.findIndex((level) => level.id === id);
   const trial = fresh(quietProgress(), index);
@@ -2625,6 +2688,7 @@ window.sunbeam = {
   rehearse,
   climbTest,
   tapChoice,
+  rideTest,
   audit,
   LEVELS,
   show,

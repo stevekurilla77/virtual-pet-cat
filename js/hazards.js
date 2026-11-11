@@ -37,7 +37,7 @@ export function dressLevel(level, index) {
       max: spot.floor ? spot.floor.x + spot.floor.w - 80 : x + 80,
       dir: 1,
       t: i * 0.7,
-      hop: ["yarn", "roomba", "mower", "roses", "dog", "spark", "grill", "sprinkler"].includes(kind),
+      hop: ["yarn", "mower", "roses", "dog", "spark", "grill", "sprinkler"].includes(kind),
     };
   });
   let bird = 0;
@@ -74,7 +74,7 @@ function addRoutes(level, index) {
   const tiers = [
     { x: base + 36, y: GROUND - 76, w: 108, kind: "shelf" },
     { x: base + 78, y: GROUND - 148, w: 96, kind: "sill" },
-    { x: base + 18, y: GROUND - 214, w: 88, kind: "perch" },
+    { x: base - 16, y: GROUND - 214, w: 176, kind: "perch" },
   ];
   for (const tier of tiers) level.solids.push({ ...tier, h: 16, ledge: true });
   const names = ROUTE[index];
@@ -86,9 +86,9 @@ function addRoutes(level, index) {
   const bonus = [
     { x: tiers[0].x + 40, y: tiers[0].y - 28 },
     { x: tiers[1].x + 30, y: tiers[1].y - 28 },
-    { x: tiers[2].x + 18, y: tiers[2].y - 30, golden: true },
+    { x: tiers[2].x + 28, y: tiers[2].y - 34, golden: true },
   ];
-  level.cans = [{ x: tiers[2].x + 52, y: tiers[2].y - 18, got: false }];
+  level.cans = [{ x: tiers[2].x + tiers[2].w * 0.62, y: tiers[2].y - 26, got: false }];
   for (const fish of bonus) {
     level.fish.push({ x: fish.x, y: fish.y, golden: Boolean(fish.golden), phase: fish.x * 0.01, got: false });
   }
@@ -129,7 +129,8 @@ export function applyClimb(state, dt, input, audio) {
     player.cling = climb;
     player.x += (climb.x - 16 - player.x) * 0.5;
     if (input.action) {
-      player.vy = -150;
+      const nearTop = player.y < climb.top + 78;
+      player.vy = nearTop ? -58 : -150;
       if ((player.climbSnd || 0) <= 0) {
         audio.scratch();
         player.climbSnd = 0.2;
@@ -185,13 +186,27 @@ export function updateCans(state, dt, audio) {
   const player = state.player;
   player.food = Math.max(0, (player.food || 0) - dt);
   player.pounceCd = Math.max(0, (player.pounceCd || 0) - dt);
+  state.canHold = Math.max(0, (state.canHold || 0) - dt);
+  for (const can of state.level.cans || []) {
+    if (can.got) continue;
+    const close = Math.abs(can.x - (player.x + 16)) < 130 && Math.abs(can.y - (player.y + 24)) < 90;
+    if (close) {
+      state.canHold = Math.max(state.canHold, 1.05);
+      if (!state.foodHint) {
+        state.foodHint = true;
+        state.banner = "Wet food!";
+        state.bannerT = 1.6;
+      }
+    }
+  }
   for (const can of state.level.cans || []) {
     if (can.got) continue;
     const dx = can.x - (player.x + 16);
     const dy = can.y - (player.y + 28);
-    if (dx * dx + dy * dy < 36 * 36) {
+    if (dx * dx + dy * dy < 64 * 64) {
       can.got = true;
       player.food = 9;
+      state.foodHint = true;
       state.banner = "Wet food energy.";
       state.bannerT = 1.6;
       audio.chime();
@@ -219,10 +234,10 @@ export function drawCans(g, level, time) {
     g.fill();
     g.fillStyle = "#f7f3ee";
     g.beginPath();
-    g.ellipse(0, 2, 14, 10, 0, 0, Math.PI * 2);
+    g.ellipse(0, 2, 18, 13, 0, 0, Math.PI * 2);
     g.fill();
-    g.fillStyle = "#e07a8c";
-    g.fillRect(-12, -4, 24, 10);
+    g.fillStyle = "#e23b55";
+    g.fillRect(-16, -6, 32, 14);
     g.fillStyle = "#fff";
     g.fillRect(-3, -4, 6, 5);
     g.strokeStyle = "#c45a4a";
@@ -232,6 +247,19 @@ export function drawCans(g, level, time) {
     g.stroke();
     g.fillStyle = "#fff8e0";
     g.fillRect(8, -9, 3, 2);
+    g.strokeStyle = "rgba(255, 244, 180, 0.9)";
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(0, -28);
+    g.lineTo(-6, -20);
+    g.lineTo(6, -20);
+    g.closePath();
+    g.stroke();
+    g.fillStyle = "rgba(255, 250, 210, 0.9)";
+    g.beginPath();
+    g.arc(12, -16, 2.2, 0, Math.PI * 2);
+    g.arc(-14, -12, 1.6, 0, Math.PI * 2);
+    g.fill();
     g.restore();
   }
 }
@@ -282,7 +310,7 @@ function climbColor(kind) {
   return "#d7b48a";
 }
 
-export function updateHazards(state, dt, audio) {
+export function updateHazards(state, dt, audio, input = {}) {
   const player = state.player;
   const hazards = state.level.hazards || [];
   let slip = 1;
@@ -298,10 +326,7 @@ export function updateHazards(state, dt, audio) {
       wind += Math.sin(hazard.t * 0.8) * 70;
       if (hazard.t % 3 < dt) audio.blip(140, 0.2, 0.05);
     }
-    if (hazard.kind === "roomba" && near && player.onGround && player.y + 58 > GROUND - 18 && Math.abs(player.x + 16 - hazard.x) < 18) {
-      if (player.vy >= 0 && player.y + 40 < GROUND - 8) bounce = -80;
-      else poke(state, audio);
-    }
+    if (hazard.kind === "roomba") rideRoomba(state, hazard, dt, audio, input);
     if (hazard.kind === "yarn" && near && player.onGround && Math.abs(player.x + 16 - hazard.x) < 16) poke(state, audio);
     if (hazard.kind === "mower" && near && player.onGround && Math.abs(player.x + 16 - hazard.x) < 28) {
       if (Math.floor(hazard.t / 1.4) !== hazard.honk) {
@@ -353,7 +378,73 @@ export function updateHazards(state, dt, audio) {
   return { slip, wind, bounce };
 }
 
+function rideRoomba(state, hazard, dt, audio, input) {
+  const player = state.player;
+  hazard.cool = Math.max(0, (hazard.cool || 0) - dt);
+  const feet = player.y + 58;
+  const over = !player.ride && hazard.cool <= 0 && player.vy >= 0 && feet < GROUND - 2 && feet > GROUND - 40 && Math.abs(player.x + 16 - hazard.x) < 24;
+  if (over) {
+    player.ride = hazard;
+    hazard.ride = 10;
+    hazard.rideLock = 0.28;
+    state.banner = "Jump to hop off. Left and right nudge.";
+    state.bannerT = 2.2;
+    audio.hum(true, 10);
+  }
+  if (player.ride !== hazard) return;
+  hazard.rideLock = Math.max(0, (hazard.rideLock || 0) - dt);
+  hazard.ride -= dt;
+  if (input.left) hazard.dir = -1;
+  if (input.right) hazard.dir = 1;
+  let dir = hazard.dir || 1;
+  const ahead = hazard.x + dir * 34;
+  if (!floorAt(state.level, ahead) || ahead < 48 || ahead > state.level.owner.x - 120 || wallAt(state.level, ahead)) dir *= -1;
+  hazard.dir = dir;
+  hazard.x = Math.max(36, Math.min(state.level.width - 48, hazard.x + dir * 88 * dt));
+  player.x = hazard.x - 16;
+  player.y = GROUND - 72;
+  player.vx = 0;
+  player.vy = 0;
+  player.onGround = true;
+  player.facing = dir > 0 ? 1 : -1;
+  for (const enemy of state.level.enemies) {
+    if (enemy.alive === false || enemy.flee) continue;
+    if (Math.abs(enemy.x - hazard.x) < 36 && Math.abs(enemy.y - (GROUND - 20)) < 40) {
+      enemy.alive = false;
+      enemy.flee = 1;
+      enemy.vy = -180;
+      enemy.vx = dir * 140;
+      state.particles.push({ x: enemy.x, y: enemy.y, vx: dir * 20, vy: -40, life: 0.45, max: 0.45, kind: "star", color: "#fff6c8" });
+      state.particles.push({ x: enemy.x, y: enemy.y - 8, vx: -dir * 16, vy: -10, life: 0.35, max: 0.35, kind: "puff", color: "#efe7dc" });
+    }
+  }
+  audio.hum(true, hazard.ride);
+  if (hazard.ride < 2 && Math.floor(hazard.ride * 2) !== hazard.beep) {
+    hazard.beep = Math.floor(hazard.ride * 2);
+    audio.blip(880, 0.07, 0.04);
+  }
+  const hopOff = hazard.ride <= 0 || (hazard.rideLock <= 0 && input.jumpPressed && !player.prevJump);
+  if (hopOff) {
+    player.ride = null;
+    player.vy = -260;
+    player.onGround = false;
+    hazard.ride = 0;
+    hazard.cool = 3.2;
+    audio.hum(false, 0);
+    audio.blip(320, 0.12, 0.05);
+  }
+}
+
+function floorAt(level, x) {
+  return level.solids.some((block) => block.kind === "floor" && x > block.x + 12 && x < block.x + block.w - 12 && Math.abs(block.y - GROUND) < 6);
+}
+
+function wallAt(level, x) {
+  return level.solids.some((block) => block.kind !== "floor" && block.kind !== "pond" && x > block.x && x < block.x + block.w && block.y < GROUND - 8 && block.y + block.h > GROUND - 24);
+}
+
 function slide(hazard, dt) {
+  if (hazard.ride > 0) return;
   if (hazard.kind === "yarn" || hazard.kind === "roomba" || hazard.kind === "mower" || hazard.kind === "cart") {
     const speed = hazard.kind === "yarn" ? 64 : hazard.kind === "mower" ? 78 : 36;
     hazard.x += hazard.dir * speed * dt;
@@ -362,7 +453,7 @@ function slide(hazard, dt) {
 }
 
 function poke(state, audio) {
-  if (state.player.invuln > 0 || state._poke) return;
+  if (state.player.ride || state.player.invuln > 0 || state._poke) return;
   audio.blip(160, 0.08, 0.05);
   state._poke = 0;
 }
@@ -441,7 +532,8 @@ function drawOne(g, hazard, time) {
     g.beginPath();
     g.ellipse(0, -8, 18, 8, 0, 0, Math.PI * 2);
     g.fill();
-    g.fillStyle = "#9ad7ff";
+    const blink = hazard.ride > 0 && Math.sin(time * (hazard.ride < 2 ? 18 : 8)) > 0;
+    g.fillStyle = blink ? "#fff" : "#7ec8ff";
     g.beginPath();
     g.arc(0, -8, 4, 0, Math.PI * 2);
     g.fill();
