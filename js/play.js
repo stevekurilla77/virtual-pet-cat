@@ -2,6 +2,7 @@ import { paintCat } from "./kitten.js";
 import { clonePose, POSES, POSE_KEYS } from "./poses.js";
 import { COAT_ORDER, COATS, EYE_ORDER, EYES, cleanName, swatchBackground } from "./coats.js";
 import { PlayAudio } from "./play-audio.js";
+import { bakeScene, drawLady, drawMotion } from "./scenery.js";
 
 const KEY = "sunbeam-play";
 const GROUND = 470;
@@ -1138,57 +1139,7 @@ function blockColor(theme, kind) {
 }
 
 function bake(level) {
-  const far = document.createElement("canvas");
-  far.width = 900;
-  far.height = 320;
-  const f = far.getContext("2d");
-  const colors = palette[level.theme];
-  const sky = f.createLinearGradient(0, 0, 0, 320);
-  sky.addColorStop(0, colors.sky0);
-  sky.addColorStop(0.55, colors.sky1);
-  sky.addColorStop(1, colors.sky2);
-  f.fillStyle = sky;
-  f.fillRect(0, 0, 900, 320);
-  f.fillStyle = colors.sun;
-  f.beginPath();
-  f.arc(160, 64, 40, 0, Math.PI * 2);
-  f.fill();
-  f.fillStyle = colors.hill;
-  f.globalAlpha = 0.72;
-  f.beginPath();
-  f.ellipse(180, 236, 210, 52, 0, 0, Math.PI * 2);
-  f.ellipse(620, 248, 250, 44, 0, 0, Math.PI * 2);
-  f.fill();
-  f.globalAlpha = 0.55;
-  f.fillStyle = colors.sill;
-  f.beginPath();
-  f.ellipse(400, 286, 180, 34, 0, 0, Math.PI * 2);
-  f.ellipse(760, 300, 160, 28, 0, 0, Math.PI * 2);
-  f.fill();
-  f.globalAlpha = 1;
-  const mid = document.createElement("canvas");
-  mid.width = Math.min(2400, level.width);
-  mid.height = 560;
-  const m = mid.getContext("2d");
-  m.fillStyle = colors.sky1;
-  if (level.theme === "living") {
-    m.fillStyle = "rgba(255,244,236,0.35)";
-    m.fillRect(80, 40, 520, 250);
-    m.strokeStyle = "rgba(255,255,255,0.7)";
-    m.strokeRect(80, 40, 520, 250);
-    const beam = m.createLinearGradient(200, 40, 360, 470);
-    beam.addColorStop(0, "rgba(255,236,180,0.0)");
-    beam.addColorStop(0.2, "rgba(255,228,160,0.28)");
-    beam.addColorStop(1, "rgba(255,228,160,0)");
-    m.fillStyle = beam;
-    m.beginPath();
-    m.moveTo(180, 50);
-    m.lineTo(430, 50);
-    m.lineTo(560, 470);
-    m.lineTo(80, 470);
-    m.fill();
-  }
-  return { far, mid };
+  return bakeScene(level);
 }
 
 function drawFish(g, fish, time) {
@@ -1416,43 +1367,24 @@ function drawFlower(g, x, y, petal, center, time, index) {
   g.fill();
 }
 
-function drawScenery(g, level, time) {
-  const colors = palette[level.theme];
-  if (level.theme === "living") {
-    drawRug(g, 250, GROUND - 4, 150, 28, colors.rug, "#ffd36a");
-    drawRug(g, 620, GROUND - 2, 120, 22, colors.table, "#fff6df");
-    drawRug(g, 900, GROUND - 4, 100, 20, colors.shelf, "#ffd6ea");
-    return;
-  }
+function drawScenery(g, level, time, camX, viewW) {
+  if (level.theme === "living") return;
   const petals = level.theme === "yard"
     ? ["#ff5d8f", "#ffe14a", "#ff8a3d", "#ffffff", "#7c5cff"]
     : level.theme === "neighbor"
       ? ["#ff8fb8", "#ffd29a", "#c9a0ff", "#ffb15a", "#7ee0d6"]
       : ["#ff5d8f", "#ffd23f", "#7c5cff", "#ff8a3d", "#ffffff"];
   const centers = ["#fff6c2", "#ff8a3d", "#ffe14a", "#ff5d8f", "#fff"];
-  const count = Math.max(8, Math.floor((level.width - 220) / 92));
-  for (let i = 0; i < count; i++) {
-    const x = 140 + i * 92;
+  const first = Math.max(0, Math.floor((camX - 40) / 160));
+  const last = Math.ceil((camX + viewW + 40) / 160);
+  for (let i = first; i <= last; i++) {
+    const x = 80 + i * 160;
     drawFlower(g, x, GROUND - 16 - (i % 3) * 4, petals[i % petals.length], centers[i % centers.length], time, i);
   }
 }
 
-function drawOwner(g, owner, time) {
-  g.save();
-  g.translate(owner.x, owner.y);
-  g.fillStyle = "#f0c7a4";
-  g.beginPath();
-  g.arc(0, 10, 12, 0, Math.PI * 2);
-  g.fill();
-  g.fillStyle = "#e07a3d";
-  g.fillRect(-16, 22, 32, 36);
-  g.strokeStyle = "#f0c7a4";
-  g.lineWidth = 6;
-  g.beginPath();
-  g.moveTo(10, 30);
-  g.quadraticCurveTo(28, 10 + Math.sin(time * 4) * 8, 24, 4);
-  g.stroke();
-  g.restore();
+function drawOwner(g, owner, time, theme, reunion) {
+  drawLady(g, owner.x, GROUND, time, theme, reunion ? "reunion" : "idle");
 }
 
 function drawWorld(state) {
@@ -1473,18 +1405,26 @@ function drawWorld(state) {
   state.camX = Math.max(0, Math.min(level.width - w / state.dpr, state.camX));
   ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  ctx.drawImage(state.bake.far, -((state.camX * 0.2) % 900), 0, 900, h / state.dpr);
-  ctx.drawImage(state.bake.far, -((state.camX * 0.2) % 900) + 900, 0, 900, h / state.dpr);
+  const farW = state.bake.far.width;
+  const farX = -((state.camX * 0.12) % farW);
+  ctx.drawImage(state.bake.far, farX, 0, farW, h / state.dpr);
+  ctx.drawImage(state.bake.far, farX + farW, 0, farW, h / state.dpr);
   ctx.save();
   ctx.translate(-state.camX + shakeX, -state.camY);
-  const colors = palette[level.theme];
-  const drift = 0.5 + 0.5 * Math.sin(state.time * 0.35);
-  ctx.fillStyle = colors.rug;
-  ctx.globalAlpha = 0.22 + drift * 0.08;
-  ctx.beginPath();
-  ctx.ellipse(380, GROUND - 6, 180, 24, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
+  const midW = state.bake.mid.width;
+  const mid = state.bake.mid;
+  ctx.save();
+  ctx.translate(state.camX * 0.5, 0);
+  const pStart = Math.floor((state.camX * 0.5) / midW) * midW - midW;
+  for (let i = 0; i < 4; i++) ctx.drawImage(mid, 0, 0, midW, 280, pStart + i * midW, 0, midW, 280);
+  ctx.restore();
+  const base = Math.floor((state.camX - 40) / midW) * midW;
+  for (let i = 0; i < 4; i++) ctx.drawImage(mid, 0, 280, midW, mid.height - 280, base + i * midW, 280, midW, mid.height - 280);
+  const viewW = w / state.dpr + 80;
+  const slice = Math.max(0, Math.min(state.bake.near.width - 1, state.camX - 40));
+  const sliceW = Math.max(1, Math.min(state.bake.near.width - slice, viewW));
+  ctx.drawImage(state.bake.near, slice, 0, sliceW, state.bake.near.height, slice, 0, sliceW, state.bake.near.height);
+  drawMotion(ctx, level, state.time, state.bake.anchors);
   for (const block of level.solids) {
     if (block.kind === "pond") {
       const water = ctx.createLinearGradient(0, block.y, 0, block.y + 40);
@@ -1502,46 +1442,6 @@ function drawWorld(state) {
     ctx.fillRect(block.x + 12, block.y + 6, Math.max(8, block.w - 24), 6);
     ctx.fillStyle = "rgba(40,20,10,0.12)";
     ctx.fillRect(block.x + 8, block.y + Math.min(block.h, 80) - 8, block.w - 16, 8);
-  }
-  if (level.theme === "yard" || level.theme === "porch") {
-    const origin = level.theme === "yard" ? 90 : 40;
-    for (let i = 0; i < 5; i++) {
-      const sway = Math.sin(state.time * 0.25 + i) * 24;
-      const ray = ctx.createLinearGradient(origin, 0, origin + 260 + i * 90, GROUND);
-      ray.addColorStop(0, `rgba(255,236,160,${0.05 + drift * 0.08})`);
-      ray.addColorStop(0.35, `rgba(255,220,120,${0.16 + drift * 0.08})`);
-      ray.addColorStop(1, "rgba(255,220,120,0)");
-      ctx.fillStyle = ray;
-      ctx.beginPath();
-      ctx.moveTo(origin + sway, -20);
-      ctx.lineTo(origin + 28 + sway, -20);
-      ctx.lineTo(origin + 160 + i * 150, GROUND + 10);
-      ctx.lineTo(origin + 40 + i * 150, GROUND + 10);
-      ctx.fill();
-    }
-  }
-  if (level.theme === "living") {
-    ctx.fillStyle = "rgba(186, 224, 244, 0.85)";
-    round(ctx, 70, 70, 520, 230, 18);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.8)";
-    ctx.lineWidth = 8;
-    ctx.stroke();
-    const beam = ctx.createLinearGradient(160, 80, 420, GROUND);
-    beam.addColorStop(0, "rgba(255,226,150,0)");
-    beam.addColorStop(0.25, `rgba(255,210,90,${0.22 + drift * 0.16})`);
-    beam.addColorStop(1, "rgba(255,220,140,0)");
-    ctx.fillStyle = beam;
-    ctx.beginPath();
-    ctx.moveTo(160, 90);
-    ctx.lineTo(420, 90);
-    ctx.lineTo(620, GROUND);
-    ctx.lineTo(40, GROUND);
-    ctx.fill();
-    ctx.fillStyle = "rgba(255,214,150,0.2)";
-    ctx.beginPath();
-    ctx.ellipse(420, GROUND - 8, 170, 28, 0, 0, Math.PI * 2);
-    ctx.fill();
   }
   for (const mark of level.checkpoints || []) drawCheckpoint(ctx, mark, state.time);
   for (const fish of level.fish) drawFish(ctx, fish, state.time);
@@ -1571,8 +1471,9 @@ function drawWorld(state) {
     ctx.quadraticCurveTo(level.rod.x + 16, level.rod.y - 40, level.rod.x + 6, level.rod.y - 64);
     ctx.stroke();
   }
-  drawScenery(ctx, level, state.time);
-  drawOwner(ctx, level.owner, state.time);
+  drawScenery(ctx, level, state.time, state.camX, w / state.dpr);
+  const reunion = state.won || Math.abs(state.player.x - level.owner.x) < 120;
+  drawOwner(ctx, level.owner, state.time, level.theme, reunion);
   drawCatShadow(ctx, state);
   if (state.player.invuln <= 0 || Math.sin(state.time * 40) > 0) paintCat(ctx, state.cat, state.time);
   for (const bit of state.particles) {
@@ -1723,6 +1624,8 @@ function loop(now) {
     paintHud();
   } else if (screen === "select") {
     drawPreview();
+  } else if (screen === "complete") {
+    drawReunion();
   }
   paintSound();
   requestAnimationFrame(loop);
@@ -1770,6 +1673,60 @@ function drawPreview() {
   const g = canvas.getContext("2d");
   g.clearRect(0, 0, canvas.width, canvas.height);
   paintCat(g, cat, performance.now() / 1000);
+}
+
+function drawReunion() {
+  const canvas = document.querySelector("#reunion");
+  if (!canvas || document.querySelector("#complete").hidden) return;
+  const theme = state && state.level ? state.level.theme : "living";
+  const g = canvas.getContext("2d");
+  const time = performance.now() / 1000;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  g.fillStyle = "#fff6ee";
+  g.fillRect(0, 0, canvas.width, canvas.height);
+  drawLady(g, 360, 250, time, theme, "reunion");
+  const cat = makeCat(progress.cat);
+  cat.x = 250;
+  cat.groundY = 248;
+  cat.scale = 1.15;
+  cat.facing = 1;
+  cat.hideShadow = false;
+  paintCat(g, cat, time);
+}
+
+function portrait() {
+  document.querySelector("#overlay").hidden = true;
+  document.querySelector("#hud").hidden = true;
+  document.querySelector("#pad").hidden = true;
+  document.querySelector("#sound-prompt").hidden = true;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const w = view.width;
+  const h = view.height;
+  ctx.fillStyle = "#f6efe6";
+  ctx.fillRect(0, 0, w, h);
+  const time = 1.2;
+  ctx.save();
+  ctx.translate(w * 0.28, h * 0.9);
+  ctx.scale(1.55, 1.55);
+  drawLady(ctx, 0, 0, time, "living", "idle");
+  ctx.restore();
+  ctx.save();
+  ctx.translate(w * 0.72, h * 0.9);
+  ctx.scale(1.55, 1.55);
+  drawLady(ctx, 0, 0, time, "yard", "reunion");
+  const cat = makeCat({ name: "Miso", gender: "girl", hair: "short", coat: "orange", eyes: "green" });
+  cat.x = -36;
+  cat.groundY = 4;
+  cat.scale = 0.85;
+  cat.facing = 1;
+  paintCat(ctx, cat, time);
+  ctx.restore();
+  ctx.fillStyle = "#5c4638";
+  ctx.font = "600 16px 'Avenir Next', 'Segoe UI', sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Waiting", w * 0.28, 28);
+  ctx.fillText("Reunion", w * 0.72, 28);
 }
 
 function bindHold(button, key) {
@@ -2146,6 +2103,7 @@ window.sunbeam = {
   snapshot,
   swipeSheet,
   enemySheet,
+  portrait,
   audit,
   LEVELS,
   show,
