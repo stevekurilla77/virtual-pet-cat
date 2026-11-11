@@ -382,6 +382,9 @@ const LEVELS = [
 ];
 
 LEVELS.forEach(dressLevel);
+LEVELS.forEach((level, index) => {
+  level.audit = auditReach(level, index);
+});
 
 function heard(sound) {
   const music = sound && Number(sound.music) > 0 ? Math.max(0, Math.min(1, Number(sound.music))) : 0.6;
@@ -546,11 +549,6 @@ function movePlayer(state, dt, input) {
   const solids = state.level.solids.filter((item) => item.kind !== "pond");
   if (player.ride) {
     player.prevJump = !!input.jumpPressed;
-    player.onGround = true;
-    player.vx = 0;
-    player.vy = 0;
-    player.x = player.ride.x - 16;
-    player.y = GROUND - 72;
     return;
   }
   if (state.fishing) {
@@ -572,7 +570,7 @@ function movePlayer(state, dt, input) {
     player.vx -= sign * Math.min(Math.abs(player.vx), 1600 * grip * dt);
   }
   player.vx += (player.wind || 0) * dt;
-  const pace = player.food > 0 ? 1.34 : 1;
+  const pace = (player.food > 0 ? 1.34 : 1) * ((player.boost || 0) > 0 ? 1.28 : 1);
   player.vx = Math.max(-MAXRUN * pace, Math.min(MAXRUN * pace, player.vx));
   if (climbMode !== "cling") player.x += player.vx * dt;
   else if (player.cling) player.x = player.cling.x - 16;
@@ -749,6 +747,16 @@ function shoo(state, enemy) {
   enemy.flee = 1;
   enemy.vy = -220;
   enemy.vx = playerDirAway(state.player, enemy) * 180;
+  const chain = state.comboAt != null && state.time - state.comboAt < 1.5;
+  state.combo = chain ? (state.combo || 1) + 1 : 1;
+  state.comboAt = state.time;
+  state.comboT = 1.5;
+  state.shake = Math.min(12, 4 + state.combo * 1.5);
+  if (state.combo >= 3 && state.combo % 3 === 0) {
+    state.progress.fishBank += 1;
+    state.banner = `Combo ${state.combo}! A bonus fish.`;
+    state.bannerT = 1.2;
+  }
   audio.tweet();
   for (let i = 0; i < 8; i++) {
     state.particles.push({
@@ -862,6 +870,14 @@ function updateEnemies(state, dt) {
       continue;
     }
     if (enemy.alive === false) continue;
+    if (player.ride) {
+      const dx = enemy.x - (player.x + 16);
+      const dy = enemy.y - (player.y + 28);
+      if (dx * dx + dy * dy < 48 * 48) {
+        shoo(state, enemy);
+        continue;
+      }
+    }
     enemy.t = (enemy.t || 0) + dt;
     const home = enemy.home == null ? enemy.y : enemy.home;
     if (enemy.stun > 0) {
@@ -870,7 +886,11 @@ function updateEnemies(state, dt) {
       enemy.vx *= 0.9;
     } else if (enemy.kind === "mouse") {
       enemy.dir = enemy.dir || 1;
-      enemy.x += enemy.dir * 96 * dt;
+      if (enemy.chaser) {
+        const goal = player.x - 120;
+        enemy.x += Math.sign(goal - enemy.x || 1) * 128 * dt;
+        enemy.x = Math.max(enemy.min, Math.min(enemy.max, enemy.x));
+      } else enemy.x += enemy.dir * 96 * dt;
       if (enemy.x < enemy.min || enemy.x > enemy.max) enemy.dir *= -1;
       enemy.y = home + Math.abs(Math.sin(enemy.t * 14)) * -6;
       if (Math.abs(player.x - enemy.x) < 200) cue(enemy, dt, () => audio.squeak());
@@ -953,8 +973,8 @@ function updateEnemies(state, dt) {
       enemy.y = home + Math.abs(Math.sin(enemy.t * 14)) * -6;
     }
     nearest = Math.min(nearest, Math.abs(enemy.x - player.x));
-    const scale = enemy.big ? 1.4 : 1;
-    const box = { x: enemy.x - 16 * scale, y: enemy.y - 16 * scale, w: 36 * scale, h: 32 * scale };
+    const scale = enemy.kind === "bird" ? 1.25 : enemy.big ? 1.45 : 1.2;
+    const box = { x: enemy.x - 18 * scale, y: enemy.y - 18 * scale, w: 36 * scale, h: 32 * scale };
     const reach = player.food > 0 ? 84 : 70;
     const lunge = {
       x: player.facing > 0 ? player.x + 4 : player.x - reach + 8,
@@ -1158,6 +1178,8 @@ function step(state, dt, input) {
   }
   state.bannerT = Math.max(0, state.bannerT - dt);
   state.shake = Math.max(0, state.shake - dt * 12);
+  state.comboT = Math.max(0, (state.comboT || 0) - dt);
+  if ((player.boost || 0) > 0) player.boost -= dt;
   sanitize(state, dt);
   audio.setTension(state.tension);
   for (const bit of state.particles) {
@@ -1416,12 +1438,16 @@ function drawEnemy(g, enemy, time) {
   g.shadowColor = "rgba(28,16,10,0.4)";
   g.shadowBlur = 8;
   g.shadowOffsetY = 3;
-  if (enemy.big) g.scale(1.35, 1.35);
+  if (enemy.kind !== "bird") g.scale(enemy.kind === "rooster" ? 1.95 : 1.8, enemy.kind === "rooster" ? 1.95 : 1.8);
+  g.lineJoin = "round";
+  g.lineWidth = 2;
+  g.strokeStyle = "#1c1916";
   if (enemy.kind === "mouse") {
     g.fillStyle = "#d8b89a";
     g.beginPath();
     g.ellipse(0, 1, 13, 7, 0, 0, Math.PI * 2);
     g.fill();
+    g.stroke();
     g.fillStyle = "#f3d2c6";
     g.beginPath();
     g.ellipse(6, 2, 5, 3.4, 0, 0, Math.PI * 2);
@@ -1448,6 +1474,14 @@ function drawEnemy(g, enemy, time) {
     g.beginPath();
     g.ellipse(0, 2, 12, 8, 0, 0, Math.PI * 2);
     g.fill();
+    g.stroke();
+    g.fillStyle = "#b86a28";
+    g.beginPath();
+    g.moveTo(-6, -2);
+    g.quadraticCurveTo(-16, -18, -8, 6);
+    g.quadraticCurveTo(-18, 8, -4, 8);
+    g.fill();
+    g.stroke();
     g.fillStyle = "#f2c9a0";
     g.beginPath();
     g.ellipse(4, 4, 5, 3, 0, 0, Math.PI * 2);
@@ -1468,6 +1502,16 @@ function drawEnemy(g, enemy, time) {
     g.beginPath();
     g.ellipse(0, 2, rooster ? 16 : 14, 10, 0, 0, Math.PI * 2);
     g.fill();
+    g.stroke();
+    g.save();
+    g.translate(-2, 0);
+    g.rotate(Math.sin(time * 10) * 0.4);
+    g.fillStyle = rooster ? "#e08a28" : "#f4efe4";
+    g.beginPath();
+    g.ellipse(-2, -4, 8, 4, -0.4, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    g.restore();
     g.fillStyle = "#f4efe4";
     g.beginPath();
     g.arc(10, -2, 6, 0, Math.PI * 2);
@@ -1598,12 +1642,15 @@ function aimCamera(state, viewW, viewH) {
   if (!Number.isFinite(state.camY)) state.camY = groundCam;
   if (!Number.isFinite(state.camX)) state.camX = 0;
   const targetX = player.x - viewW * 0.38 + player.facing * 70;
-  const falling = player.y > GROUND + 24;
+  const falling = !player.ride && player.y > GROUND + 24;
+  const flying = Boolean(player.ride);
   const catAbove = GROUND - (player.y + PH);
-  const tall = catAbove > 150 && !falling;
+  const tall = !flying && catAbove > 150 && !falling;
   let desiredY = groundCam;
   const catScreen = player.y - state.camY;
-  if (falling) {
+  if (flying) {
+    desiredY = Math.max(0, Math.min(groundCam, player.y - viewH * 0.42));
+  } else if (falling) {
     desiredY = Math.min(state.camY, groundCam);
   } else if (tall) {
     desiredY = player.y - viewH * 0.22;
@@ -1614,7 +1661,7 @@ function aimCamera(state, viewW, viewH) {
   }
   const floorHigh = GROUND - viewH * 0.70;
   const floorLow = GROUND - viewH * 0.96;
-  if (!tall) desiredY = Math.max(floorLow, Math.min(floorHigh, desiredY));
+  if (!tall && !flying) desiredY = Math.max(floorLow, Math.min(floorHigh, desiredY));
   if ((state.canHold || 0) > 0) {
     const prize = (state.level.cans || []).find((item) => !item.got && Math.abs(item.x - player.x) < 200);
     if (prize) {
@@ -1628,7 +1675,7 @@ function aimCamera(state, viewW, viewH) {
     state.snapCam = false;
   } else {
     state.camX += (targetX - state.camX) * 0.08;
-    state.camY += (desiredY - state.camY) * ((state.canHold || 0) > 0 ? 0.14 : tall ? 0.06 : 0.045);
+    state.camY += (desiredY - state.camY) * (flying ? 0.12 : (state.canHold || 0) > 0 ? 0.14 : tall ? 0.06 : 0.045);
   }
 }
 
@@ -1860,6 +1907,11 @@ function paintHud() {
   if (!state) return;
   hearts.textContent = "♥".repeat(Math.max(0, state.player.health)) + "♡".repeat(Math.max(0, 3 - state.player.health));
   fishCount.textContent = `${state.fishGot}/${state.level.fishValue}`;
+  const combo = document.querySelector("#combo");
+  if (combo) {
+    combo.hidden = (state.comboT || 0) <= 0;
+    combo.textContent = state.combo > 1 ? `x${state.combo}` : "";
+  }
   const fill = document.querySelector("#progress-fill");
   if (fill) fill.style.width = `${Math.max(0, Math.min(1, state.player.x / Math.max(1, state.level.owner.x))) * 100}%`;
   paintSound();
@@ -1874,7 +1926,7 @@ function paintHud() {
   if (ring) {
     const rideLeft = state.player.ride ? state.player.ride.ride || 0 : 0;
     const left = rideLeft || state.player.food || 0;
-    const total = rideLeft ? 10 : 9;
+    const total = rideLeft ? 13.5 : 9;
     ring.hidden = left <= 0;
     if (left > 0) {
       const pen = ring.getContext("2d");
@@ -2623,21 +2675,166 @@ function rideTest() {
     step(trial, 1 / 60, still());
     if (trial.player.ride) started = true;
   }
+  const steer = { ...still(), right: true, jump: true, jumpPressed: false };
   const x0 = trial.player.x;
-  for (let i = 0; i < 40; i++) step(trial, 1 / 60, still());
+  const y0 = trial.player.y;
+  for (let i = 0; i < 50; i++) step(trial, 1 / 60, steer);
   const moved = started && Math.abs(trial.player.x - x0) > 12;
-  const during = Number.isFinite(trial.player.x) && trial.player.y < GROUND;
+  const flew = started && trial.player.y < y0 - 24;
+  const during = Number.isFinite(trial.player.x) && trial.player.y > 20 && trial.player.y < GROUND;
   if (trial.player.ride) trial.player.ride.ride = 0.02;
-  for (let i = 0; i < 70; i++) step(trial, 1 / 60, still());
+  for (let i = 0; i < 90; i++) step(trial, 1 / 60, still());
+  const feet = trial.player.y + PH;
+  const solid = trial.level.solids.some((block) => block.kind !== "pond" && feet >= block.y - 8 && feet <= block.y + 36 && trial.player.x + PW > block.x && trial.player.x < block.x + block.w);
   return {
     started,
     moved,
+    flew,
     during,
     ended: !trial.player.ride,
     y: Math.round(trial.player.y),
+    solid,
     finite: Number.isFinite(trial.player.x) && Number.isFinite(trial.player.y),
-    inWorld: trial.player.y < 800 && trial.player.x > -20 && trial.player.x < trial.level.width,
+    inWorld: trial.player.y < 800 && trial.player.y > -20 && trial.player.x > -20 && trial.player.x < trial.level.width,
   };
+}
+
+function auditReach(level, levelIndex) {
+  const stands = [];
+  for (const block of level.solids) {
+    if (block.kind === "pond") continue;
+    if (!(block.kind === "floor" || block.ledge || block.h <= 28)) continue;
+    for (let x = block.x + 18; x <= block.x + block.w - 18; x += 32) stands.push({ x, y: block.y });
+  }
+  const n = stands.length;
+  const reach = new Array(n).fill(false);
+  const queue = [];
+  const jumpUp = levelIndex >= 1 ? 220 : 132;
+  const link = (i) => {
+    const a = stands[i];
+    for (let j = 0; j < n; j++) {
+      if (reach[j]) continue;
+      const b = stands[j];
+      const dx = Math.abs(a.x - b.x);
+      const up = a.y - b.y;
+      const ok = (Math.abs(up) <= 12 && dx <= 210)
+        || (up > 12 && up <= 70 && dx <= 230)
+        || (up > 70 && up <= jumpUp && dx <= 180)
+        || (up < -12 && up >= -240 && dx <= 150);
+      if (ok) {
+        reach[j] = true;
+        queue.push(j);
+      }
+    }
+  };
+  for (let i = 0; i < n; i++) {
+    if (Math.abs(stands[i].y - GROUND) < 3 && stands[i].x < 180) {
+      reach[i] = true;
+      queue.push(i);
+    }
+  }
+  while (queue.length) link(queue.pop());
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const climb of level.climbs || []) {
+      const foot = stands.some((stand, index) => reach[index] && Math.abs(stand.x - climb.x) < 40 && Math.abs(stand.y - climb.bot) < 36);
+      if (!foot) continue;
+      const topY = climb.ledgeY + 58;
+      for (let j = 0; j < n; j++) {
+        if (reach[j]) continue;
+        if (Math.abs(stands[j].x - climb.ledgeX) < 56 && Math.abs(stands[j].y - topY) < 22) {
+          reach[j] = true;
+          queue.push(j);
+          grew = true;
+        }
+      }
+    }
+    while (queue.length) link(queue.pop());
+  }
+  const reached = stands.filter((_, index) => reach[index]);
+  const flight = (level.hazards || []).some((hazard) => hazard.kind === "roomba" && reached.some((stand) => Math.abs(stand.x - hazard.x) < 52 && Math.abs(stand.y - GROUND) < 6));
+  const inside = (x, y) => level.solids.some((block) => block.kind !== "pond" && x > block.x + 6 && x < block.x + block.w - 6 && y > block.y + 6 && y < block.y + Math.min(block.h, 70) - 4);
+  const can = (fish) => {
+    if (inside(fish.x, fish.y) || fish.y > GROUND + 16 || fish.y < 36) return false;
+    for (const stand of reached) {
+      const dx = Math.abs(fish.x - stand.x);
+      const up = stand.y - fish.y;
+      if (up >= -50 && up <= jumpUp + 42 && dx <= (up > 96 ? 170 : 220)) return true;
+    }
+    return flight && fish.x > 36 && fish.x < level.owner.x - 46 && fish.y >= 68 && fish.y <= GROUND - 4 && !inside(fish.x, fish.y);
+  };
+  const moved = [];
+  for (const fish of level.fish) {
+    if (can(fish)) continue;
+    let best = reached[0];
+    let bestD = Infinity;
+    for (const stand of reached) {
+      const dist = Math.abs(stand.x - fish.x) + Math.abs(stand.y - fish.y) * 0.4;
+      if (dist < bestD) {
+        bestD = dist;
+        best = stand;
+      }
+    }
+    const to = best ? { x: best.x, y: Math.min(GROUND - 28, best.y - 30) } : { x: 140, y: GROUND - 34 };
+    moved.push({ fromX: Math.round(fish.x), fromY: Math.round(fish.y), toX: Math.round(to.x), toY: Math.round(to.y) });
+    fish.x = to.x;
+    fish.y = to.y;
+  }
+  const unreachable = level.fish.filter((fish) => !can(fish)).map((fish) => ({ x: Math.round(fish.x), y: Math.round(fish.y) }));
+  level.fishValue = level.fish.length;
+  return {
+    id: level.id,
+    total: level.fish.length,
+    flight,
+    stands: reached.length,
+    moved: moved.length,
+    movedList: moved.slice(0, 16),
+    unreachable,
+  };
+}
+
+function fishAudit() {
+  const bad = LEVELS.filter((level) => level.audit.unreachable.length);
+  if (bad.length) {
+    const detail = bad.map((level) => `${level.id}:${level.audit.unreachable.length}`).join(", ");
+    throw new Error(`unreachable fish ${detail}`);
+  }
+  return LEVELS.map((level) => ({
+    id: level.id,
+    total: level.fishValue,
+    moved: level.audit.moved,
+    flight: level.audit.flight,
+    sample: level.audit.movedList,
+  }));
+}
+
+function birdZoom() {
+  document.querySelector("#overlay").hidden = true;
+  document.querySelector("#hud").hidden = true;
+  document.querySelector("#pad").hidden = true;
+  document.querySelector("#sound-prompt").hidden = true;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const w = view.width;
+  const h = view.height;
+  ctx.fillStyle = "#f4efe6";
+  ctx.fillRect(0, 0, w, h);
+  const names = ["jay", "cardinal", "sparrow", "robin", "crow", "pigeon"];
+  names.forEach((name, index) => {
+    const col = index % 3;
+    const row = Math.floor(index / 3);
+    const x = (col + 0.5) * (w / 3);
+    const y = (row + 0.46) * (h / 2);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(2.35, 2.35);
+    drawBird(ctx, { species: name, dive: index === 1 ? "warn" : null, x: index * 20 }, 0.8);
+    ctx.restore();
+    ctx.fillStyle = "#3a2a22";
+    ctx.font = "700 18px 'Avenir Next', 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(name, x, y + h * 0.2);
+  });
 }
 
 function climbTest(id) {
@@ -2689,6 +2886,8 @@ window.sunbeam = {
   climbTest,
   tapChoice,
   rideTest,
+  fishAudit,
+  birdZoom,
   audit,
   LEVELS,
   show,
