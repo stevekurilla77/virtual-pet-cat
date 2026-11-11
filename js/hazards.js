@@ -53,6 +53,177 @@ export function dressLevel(level, index) {
     );
     level.fishValue += 2;
   }
+  addRoutes(level, index);
+}
+
+const ROUTE = [
+  ["curtain", "bookshelf", "post"],
+  ["porch", "trellis", "post"],
+  ["fence", "trunk", "post"],
+  ["coop", "shed", "post"],
+];
+
+function addRoutes(level, index) {
+  const floors = level.solids.filter((block) => block.kind === "floor" && block.w > 760 && block.x > 700 && block.x + block.w < level.owner.x - 180);
+  const floor = floors[1] || floors[0];
+  if (!floor) {
+    level.climbs = [];
+    return;
+  }
+  const base = floor.x + Math.min(220, floor.w * 0.28);
+  const tiers = [
+    { x: base + 36, y: GROUND - 76, w: 108, kind: "shelf" },
+    { x: base + 78, y: GROUND - 148, w: 96, kind: "sill" },
+    { x: base + 18, y: GROUND - 214, w: 88, kind: "perch" },
+  ];
+  for (const tier of tiers) level.solids.push({ ...tier, h: 16, ledge: true });
+  const names = ROUTE[index];
+  level.climbs = [
+    { x: base, top: GROUND - 76, bot: GROUND, kind: names[0], ledgeX: tiers[0].x + 20, ledgeY: tiers[0].y - 58 },
+    { x: base + 54, top: GROUND - 148, bot: GROUND - 60, kind: names[1], ledgeX: tiers[1].x + 16, ledgeY: tiers[1].y - 58 },
+    { x: base + 8, top: GROUND - 214, bot: GROUND - 132, kind: names[2], ledgeX: tiers[2].x + 12, ledgeY: tiers[2].y - 58 },
+  ];
+  const bonus = [
+    { x: tiers[0].x + 40, y: tiers[0].y - 28 },
+    { x: tiers[1].x + 30, y: tiers[1].y - 28 },
+    { x: tiers[2].x + 24, y: tiers[2].y - 30, golden: true },
+  ];
+  for (const fish of bonus) {
+    level.fish.push({ x: fish.x, y: fish.y, golden: Boolean(fish.golden), phase: fish.x * 0.01, got: false });
+  }
+  level.fishValue += bonus.length;
+}
+
+export function nearClimb(state, pad = 26) {
+  const player = state.player;
+  let found = null;
+  for (const climb of state.level.climbs || []) {
+    if (player.y + 58 < climb.top + 6 || player.y > climb.bot) continue;
+    if (Math.abs(player.x + 16 - climb.x) < pad) found = climb;
+  }
+  return found;
+}
+
+export function applyClimb(state, dt, input, audio) {
+  const player = state.player;
+  if (player.clingLock > 0) player.clingLock -= dt;
+  if (player.mantle) {
+    player.mantle.t -= dt;
+    player.x += (player.mantle.x - player.x) * 0.45;
+    player.y += (player.mantle.y - player.y) * 0.45;
+    player.vx = 0;
+    player.vy = 0;
+    if (player.mantle.t <= 0) {
+      player.x = player.mantle.x;
+      player.y = player.mantle.y;
+      player.onGround = true;
+      player.wasGround = false;
+      player.mantle = null;
+      player.airJump = state.levelIndex >= 1;
+    }
+    return "mantle";
+  }
+  const climb = (player.clingLock || 0) <= 0 ? nearClimb(state) : null;
+  if (climb && !player.onGround) {
+    player.cling = climb;
+    player.x += (climb.x - 16 - player.x) * 0.5;
+    if (input.action) {
+      player.vy = -150;
+      if ((player.climbSnd || 0) <= 0) {
+        audio.scratch();
+        player.climbSnd = 0.2;
+      }
+    } else player.vy = Math.min(player.vy, 80);
+    if (player.climbSnd > 0) player.climbSnd -= dt;
+    if (input.jumpPressed) {
+      player.vy = -560;
+      player.vx = (player.x + 16 < climb.x ? -1 : 1) * -220;
+      player.vx = player.x + 16 < climb.x ? 240 : -240;
+      player.cling = null;
+      player.clingLock = 0.18;
+      player.airJump = state.levelIndex >= 1;
+      audio.scratch();
+      return null;
+    }
+    if (player.y <= climb.top + 8) {
+      player.mantle = { x: climb.ledgeX, y: climb.ledgeY, t: 0.18 };
+      audio.scratch();
+    }
+    return "cling";
+  }
+  player.cling = null;
+  if (player.ledgeCoyote > 0) player.ledgeCoyote -= dt;
+  const ledge = findLedge(state);
+  if (ledge) player.ledgeCoyote = 0.14;
+  const airborne = player.leftGround == null ? 1 : player.leftGround;
+  if (!player.onGround && airborne > 0.22 && player.vy > -40 && player.ledgeCoyote > 0 && ledge) {
+    player.mantle = { x: ledge.x, y: ledge.y, t: 0.18 };
+    player.vy = 0;
+    audio.scratch();
+    return "mantle";
+  }
+  return null;
+}
+
+function findLedge(state) {
+  const player = state.player;
+  const chest = player.y + 14;
+  for (const block of state.level.solids) {
+    if (!block.ledge || block.kind === "floor" || block.kind === "pond") continue;
+    if (block.y > GROUND - 24) continue;
+    if (chest > block.y + 22 || chest < block.y - 42) continue;
+    const reach = player.x + 32 > block.x - 22 && player.x < block.x + block.w + 22;
+    if (!reach) continue;
+    const landX = Math.max(block.x + 4, Math.min(block.x + block.w - 36, player.x));
+    return { x: landX, y: block.y - 58 };
+  }
+  return null;
+}
+
+export function drawClimbs(g, level, time) {
+  for (const climb of level.climbs || []) {
+    const h = climb.bot - climb.top;
+    g.save();
+    g.translate(climb.x, climb.top);
+    g.fillStyle = climbColor(climb.kind);
+    g.fillRect(-7, 0, 14, h);
+    g.strokeStyle = "rgba(255,255,255,0.55)";
+    g.lineWidth = 1.4;
+    for (let y = 10; y < h - 8; y += 16) {
+      g.beginPath();
+      g.moveTo(-4, y);
+      g.lineTo(3, y + 7);
+      g.moveTo(4, y + 2);
+      g.lineTo(-3, y + 9);
+      g.stroke();
+    }
+    const bob = Math.sin(time * 3 + climb.x) * 3;
+    g.fillStyle = "#fff8f2";
+    g.beginPath();
+    g.arc(16, h * 0.45 + bob, 7, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = "#c47a3a";
+    g.lineWidth = 1.6;
+    g.beginPath();
+    g.moveTo(13, h * 0.45 + bob);
+    g.lineTo(19, h * 0.45 + bob - 4);
+    g.moveTo(13, h * 0.45 + bob + 3);
+    g.lineTo(19, h * 0.45 + bob - 1);
+    g.stroke();
+    g.restore();
+  }
+}
+
+function climbColor(kind) {
+  if (kind === "curtain") return "#e7a0b0";
+  if (kind === "bookshelf") return "#c4925a";
+  if (kind === "trellis") return "#6eae84";
+  if (kind === "porch") return "#f4efe4";
+  if (kind === "fence") return "#f7f1ea";
+  if (kind === "trunk") return "#8d5a32";
+  if (kind === "coop") return "#e2b84a";
+  if (kind === "shed") return "#c45a4a";
+  return "#d7b48a";
 }
 
 export function updateHazards(state, dt, audio) {

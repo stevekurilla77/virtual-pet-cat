@@ -3,7 +3,7 @@ import { clonePose, POSES, POSE_KEYS } from "./poses.js";
 import { COAT_ORDER, COATS, EYE_ORDER, EYES, cleanName, swatchBackground } from "./coats.js";
 import { PlayAudio } from "./play-audio.js";
 import { bakeScene, drawLady, drawMotion } from "./scenery.js";
-import { dressLevel, drawBird, drawHazards, nearest, updateHazards, birdSheet } from "./hazards.js";
+import { applyClimb, dressLevel, drawBird, drawClimbs, drawHazards, nearClimb, nearest, updateHazards, birdSheet } from "./hazards.js";
 
 const KEY = "sunbeam-play";
 const GROUND = 470;
@@ -500,6 +500,9 @@ function fresh(progress, levelIndex) {
       airJump: false,
       pounce: 0,
       grapple: null,
+      mantle: null,
+      cling: null,
+      clingLock: 0,
       hurt: 0,
       invuln: 0,
       land: 0,
@@ -543,6 +546,11 @@ function movePlayer(state, dt, input) {
     player.vx = 0;
     return;
   }
+  const climbMode = applyClimb(state, dt, input, audio);
+  if (climbMode === "mantle") {
+    if (player.y > 720) hurt(state, "pit");
+    return;
+  }
   const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
   const grip = player.slip == null ? 1 : player.slip;
   if (dir) {
@@ -554,11 +562,12 @@ function movePlayer(state, dt, input) {
   }
   player.vx += (player.wind || 0) * dt;
   player.vx = Math.max(-MAXRUN, Math.min(MAXRUN, player.vx));
-  player.x += player.vx * dt;
+  if (climbMode !== "cling") player.x += player.vx * dt;
+  else if (player.cling) player.x = player.cling.x - 16;
   player.coyote = player.onGround ? 0.12 : Math.max(0, player.coyote - dt);
   player.jumpBuf = input.jumpPressed ? 0.12 : Math.max(0, player.jumpBuf - dt);
   const gravity = !input.jump && player.vy < 0 ? GRAV * 2.15 : GRAV;
-  player.vy += gravity * dt;
+  if (climbMode !== "cling") player.vy += gravity * dt;
   const was = player.y;
   player.y += player.vy * dt;
   player.onGround = false;
@@ -596,6 +605,8 @@ function movePlayer(state, dt, input) {
     player.bounce = 0;
   }
   player.wasGround = player.onGround;
+  if (player.onGround) player.leftGround = 0;
+  else player.leftGround = (player.leftGround || 0) + dt;
   if (player.onGround) rememberSafe(state);
   if (player.y > 720) hurt(state, "pit");
 }
@@ -612,11 +623,29 @@ function surfaceBelow(state, x, feet) {
   return best;
 }
 
+function num(value, fallback) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function hazardUnder(state, x) {
+  return (state.level.hazards || []).some((hazard) => hazard.hop && Math.abs(hazard.x - (x + PW / 2)) < 26);
+}
+
+function groundedSpot(state, x, y) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  const feet = y + PH;
+  const surface = surfaceBelow(state, x, feet);
+  if (surface == null || Math.abs(surface - feet) > 4) return false;
+  if (hazardUnder(state, x)) return false;
+  return true;
+}
+
 function rememberSafe(state) {
   const player = state.player;
   const feet = player.y + PH;
   const surface = surfaceBelow(state, player.x, feet);
   if (surface == null || Math.abs(surface - feet) > 3) return;
+  if (hazardUnder(state, player.x)) return;
   const crowded = state.level.enemies.some((enemy) => enemy.alive !== false && !enemy.flee && Math.abs(enemy.x - (player.x + PW / 2)) < 64 && Math.abs(enemy.y - player.y) < 48);
   if (crowded) return;
   state.safe = { x: player.x, y: player.y };
@@ -624,7 +653,18 @@ function rememberSafe(state) {
 
 function respawn(state) {
   const player = state.player;
-  const spot = state.safe || { x: state.level.spawn, y: GROUND - PH };
+  const start = { x: state.level.spawn, y: GROUND - PH };
+  const candidates = [];
+  if (state.safe) candidates.push(state.safe);
+  for (const mark of (state.level.checkpoints || []).slice(0, 8)) candidates.push({ x: mark.x - 16, y: GROUND - PH });
+  candidates.push(start);
+  let spot = start;
+  for (let i = 0; i < candidates.length && i < 12; i++) {
+    if (groundedSpot(state, candidates[i].x, candidates[i].y)) {
+      spot = candidates[i];
+      break;
+    }
+  }
   player.x = spot.x;
   player.y = spot.y;
   player.vx = 0;
@@ -635,13 +675,36 @@ function respawn(state) {
   player.hurt = 0.25;
   player.scratch = 0;
   player.swipeHit = false;
+  player.pounce = 0;
   player.grapple = null;
   player.airJump = false;
+  player.bounce = 0;
+  player.mantle = null;
+  player.cling = null;
+  player.clingLock = 0;
+  player.wind = 0;
   state.fishing = null;
   state.snapCam = true;
   state.respawned = true;
+  state.pitTime = 0;
   state.banner = "Back on solid ground";
   state.bannerT = 1.3;
+}
+
+function sanitize(state, dt) {
+  const player = state.player;
+  const spawnX = state.level.spawn;
+  player.x = num(player.x, spawnX);
+  player.y = num(player.y, GROUND - PH);
+  player.vx = Math.max(-900, Math.min(900, num(player.vx, 0)));
+  player.vy = Math.max(-1400, Math.min(2200, num(player.vy, 0)));
+  player.x = Math.max(-200, Math.min(state.level.width + 200, player.x));
+  if (player.y > 1400) player.y = 1400;
+  state.camX = num(state.camX, 0);
+  state.camY = num(state.camY, 0);
+  if (player.y > GROUND + 48) state.pitTime = (state.pitTime || 0) + dt;
+  else state.pitTime = 0;
+  if (state.pitTime > 1.5) respawn(state);
 }
 
 const ACCEL = 1700;
@@ -685,13 +748,25 @@ function playerDirAway(player, enemy) {
 
 function hurt(state, knock) {
   const player = state.player;
-  if (player.invuln > 0 || state.won) return;
+  if (state.won) return;
+  if (knock === "pit") {
+    if (player.invuln <= 0) {
+      player.health -= 1;
+      if (player.health <= 0) player.health = 3;
+      state.shake = 7;
+      audio.sting("music-hurt");
+      audio.yowl();
+    }
+    respawn(state);
+    return;
+  }
+  if (player.invuln > 0) return;
   player.health -= 1;
   state.shake = 7;
   audio.sting("music-hurt");
   audio.yowl();
-  if (knock === "pit" || player.health <= 0) {
-    if (player.health <= 0) player.health = 3;
+  if (player.health <= 0) {
+    player.health = 3;
     respawn(state);
     return;
   }
@@ -1046,6 +1121,7 @@ function step(state, dt, input) {
   }
   state.bannerT = Math.max(0, state.bannerT - dt);
   state.shake = Math.max(0, state.shake - dt * 12);
+  sanitize(state, dt);
   audio.setTension(state.tension);
   for (const bit of state.particles) {
     bit.life -= dt;
@@ -1092,6 +1168,7 @@ function useAction(state) {
   const player = state.player;
   const post = nearest(state.level, "post", player.x + 16, 28);
   const hook = nearest(state.level, "hook", player.x + 16, 90);
+  if (nearClimb(state)) return;
   if (!player.onGround && player.vy > 20) {
     player.pounce = 0.18;
     return;
@@ -1449,22 +1526,47 @@ function drawOwner(g, owner, time, theme, reunion) {
   drawLady(g, owner.x, GROUND, time, theme, reunion ? "reunion" : "idle");
 }
 
+function aimCamera(state, viewW, viewH) {
+  const player = state.player;
+  const groundCam = GROUND - viewH * 0.78;
+  if (!Number.isFinite(state.camY)) state.camY = groundCam;
+  if (!Number.isFinite(state.camX)) state.camX = 0;
+  const targetX = player.x - viewW * 0.38 + player.facing * 70;
+  const falling = player.y > GROUND + 24;
+  const catAbove = GROUND - (player.y + PH);
+  const tall = catAbove > 150 && !falling;
+  let desiredY = groundCam;
+  const catScreen = player.y - state.camY;
+  if (falling) {
+    desiredY = Math.min(state.camY, groundCam);
+  } else if (tall) {
+    desiredY = player.y - viewH * 0.22;
+  } else if (catScreen < viewH * 0.22) {
+    desiredY = player.y - viewH * 0.22;
+  } else if (catScreen > viewH * 0.72 && player.y + PH <= GROUND + 8) {
+    desiredY = player.y - viewH * 0.72;
+  }
+  const floorHigh = GROUND - viewH * 0.70;
+  const floorLow = GROUND - viewH * 0.96;
+  if (!tall) desiredY = Math.max(floorLow, Math.min(floorHigh, desiredY));
+  if (state.snapCam) {
+    state.camX = targetX;
+    state.camY = falling ? groundCam : desiredY;
+    state.snapCam = false;
+  } else {
+    state.camX += (targetX - state.camX) * 0.08;
+    state.camY += (desiredY - state.camY) * (tall ? 0.06 : 0.045);
+  }
+}
+
 function drawWorld(state) {
   const level = state.level;
   const w = view.width;
   const h = view.height;
   const shakeX = (Math.random() - 0.5) * state.shake;
-  const targetX = state.player.x - w / state.dpr * 0.38 + state.player.facing * 70;
-  const targetY = state.player.y - h / state.dpr * 0.62;
-  if (state.snapCam) {
-    state.camX = targetX;
-    state.camY = targetY;
-    state.snapCam = false;
-  } else {
-    state.camX += (targetX - state.camX) * 0.08;
-    state.camY += (targetY - state.camY) * 0.08;
-  }
-  state.camX = Math.max(0, Math.min(level.width - w / state.dpr, state.camX));
+  const viewH = h / state.dpr;
+  aimCamera(state, w / state.dpr, viewH);
+  state.camX = Math.max(0, Math.min(Math.max(0, level.width - w / state.dpr), state.camX));
   ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
   const farW = state.bake.far.width;
@@ -1540,6 +1642,7 @@ function drawWorld(state) {
     ctx.quadraticCurveTo(level.rod.x + 16, level.rod.y - 40, level.rod.x + 6, level.rod.y - 64);
     ctx.stroke();
   }
+  drawClimbs(ctx, state.level, state.time);
   drawHazards(ctx, state);
   drawScenery(ctx, level, state.time, state.camX, w / state.dpr);
   const reunion = state.won || Math.abs(state.player.x - level.owner.x) < 120;
@@ -1682,38 +1785,64 @@ function paintHud() {
 
 function actionName(state) {
   const player = state.player;
+  if (player.cling || nearClimb(state)) return "Climb";
   if (!player.onGround && player.vy > 0) return "Pounce";
   if (nearest(state.level, "post", player.x, 36)) return "Climb";
   if (nearest(state.level, "hook", player.x, 100)) return "Yarn";
   return "";
 }
 
+function noteError(error) {
+  const text = String(error && error.stack ? error.stack : error).slice(0, 500);
+  loop.errors = (loop.errors || 0) + 1;
+  loop.lastError = text;
+  if (sunbeamDebug()) {
+    const box = document.querySelector("#debug-log");
+    if (box) {
+      box.hidden = false;
+      box.textContent = text;
+    }
+  }
+  console.error(error);
+}
+
+function sunbeamDebug() {
+  return /(?:\?|&)debug=1/.test(location.search) || window.SUNBEAM_DEBUG === true;
+}
+
 function loop(now) {
   const dt = Math.min(0.033, (now - (loop.last || now)) / 1000);
   loop.last = now;
-  if (state && state.mode === "play") {
-    const input = {
-      left: held.left,
-      right: held.right,
-      jump: held.jump,
-      jumpPressed: pressed.jump,
-      scratch: held.scratch,
-      scratchPressed: pressed.scratch,
-      fish: held.fish,
-      fishPressed: pressed.fish,
-      action: held.action,
-      actionPressed: pressed.action,
-    };
-    pressed.jump = pressed.scratch = pressed.fish = pressed.action = false;
-    step(state, dt, input);
-    drawWorld(state);
-    paintHud();
-  } else if (screen === "select") {
-    drawPreview();
-  } else if (screen === "complete") {
-    drawReunion();
+  try {
+    if (state && state.mode === "play") {
+      const input = {
+        left: held.left,
+        right: held.right,
+        jump: held.jump,
+        jumpPressed: pressed.jump,
+        scratch: held.scratch,
+        scratchPressed: pressed.scratch,
+        fish: held.fish,
+        fishPressed: pressed.fish,
+        action: held.action,
+        actionPressed: pressed.action,
+      };
+      pressed.jump = pressed.scratch = pressed.fish = pressed.action = false;
+      step(state, dt, input);
+      drawWorld(state);
+      paintHud();
+    } else if (screen === "select") {
+      drawPreview();
+    } else if (screen === "complete") {
+      drawReunion();
+    }
+    paintSound();
+  } catch (error) {
+    noteError(error);
+    if (state) {
+      try { sanitize(state, dt); respawn(state); } catch (again) { noteError(again); }
+    }
   }
-  paintSound();
   requestAnimationFrame(loop);
 }
 
@@ -2204,6 +2333,166 @@ function audit(level) {
   return { id: level.id, enemies: level.enemies.length, fish: level.fishValue, width: level.width, problems };
 }
 
+function quietProgress() {
+  return {
+    cat: { name: "Miso", gender: "girl", hair: "short", coat: "orange", eyes: "green" },
+    sound: { music: 0, musicOn: false, effects: 0, effectsOn: false },
+    unlocked: 4, stars: {}, rod: true, unlockAll: true, fishBank: 0, bestFish: {},
+  };
+}
+
+function pitXs(level) {
+  const floors = level.solids.filter((block) => block.kind === "floor").sort((a, b) => a.x - b.x);
+  const pits = [];
+  for (let i = 0; i < floors.length - 1 && pits.length < 8; i++) {
+    const left = floors[i].x + floors[i].w;
+    const gap = floors[i + 1].x - left;
+    if (gap > 36) pits.push(left + Math.min(24, gap / 2));
+  }
+  return pits;
+}
+
+function stressPits() {
+  const modes = ["plain", "invuln", "jump", "pounce", "grapple", "checkpoint", "lastHeart", "double", "bounce", "ride"];
+  const bad = [];
+  let cases = 0;
+  for (const level of LEVELS) {
+    for (const pitX of pitXs(level)) {
+      for (const mode of modes) {
+        cases += 1;
+        const index = LEVELS.indexOf(level);
+        const trial = fresh(quietProgress(), index);
+        trial.mode = "play";
+        const input = still();
+        try {
+          for (let i = 0; i < 8; i++) step(trial, 1 / 60, input);
+          if (mode === "checkpoint" && trial.level.checkpoints[0]) {
+            trial.safe = { x: trial.level.checkpoints[0].x - 16, y: GROUND - PH };
+          }
+          trial.player.x = pitX;
+          trial.player.y = GROUND - 20;
+          trial.player.vy = 240;
+          trial.player.onGround = false;
+          if (mode === "invuln") trial.player.invuln = 4;
+          if (mode === "lastHeart") trial.player.health = 1;
+          if (mode === "pounce") trial.player.pounce = 0.3;
+          if (mode === "grapple") trial.player.grapple = { x: pitX + 40, y: 180, life: 0.4 };
+          if (mode === "double") {
+            trial.player.airJump = true;
+            trial.player.vy = -180;
+          }
+          if (mode === "bounce") trial.player.bounce = -500;
+          if (mode === "ride") trial.player.vy = -80;
+          for (let frame = 0; frame < 160; frame++) {
+            if (mode === "jump" && frame < 25) input.jump = true;
+            else input.jump = false;
+            step(trial, 1 / 60, input);
+          }
+          for (let frame = 0; frame < 40; frame++) step(trial, 1 / 60, still());
+          const finite = [trial.player.x, trial.player.y, trial.player.vx, trial.player.vy].every(Number.isFinite);
+          const grounded = groundedSpot(trial, trial.player.x, trial.player.y) && trial.player.vy === 0;
+          if (!finite || !grounded || trial.player.y > 720) bad.push({ id: level.id, mode, finite, grounded, y: Math.round(trial.player.y) });
+        } catch (error) {
+          bad.push({ id: level.id, mode, threw: String(error).slice(0, 180) });
+        }
+      }
+    }
+  }
+  return { cases, bad };
+}
+
+function rehearse(id, viewW, viewH, kind) {
+  const index = LEVELS.findIndex((level) => level.id === id);
+  const trial = fresh(quietProgress(), index);
+  trial.mode = "play";
+  const idle = still();
+  for (let i = 0; i < 40; i++) {
+    step(trial, 1 / 60, idle);
+    aimCamera(trial, viewW, viewH);
+  }
+  let best = { y: trial.player.y, cam: trial.camY };
+  for (let frame = 0; frame < 70; frame++) {
+    const launched = kind === "tramp" || kind === "balloon";
+    const input = { ...still(), jump: !launched && frame < 26, jumpPressed: !launched && (frame === 0 || (kind === "double" && frame === 16)) };
+    if (kind === "tramp" && frame === 0) trial.player.bounce = -820;
+    if (kind === "balloon" && frame === 0) trial.player.bounce = -460;
+    step(trial, 1 / 60, input);
+    aimCamera(trial, viewW, viewH);
+    if (trial.player.y < best.y) best = { y: trial.player.y, cam: trial.camY };
+  }
+  return {
+    id,
+    kind,
+    viewH,
+    apexY: Math.round(best.y),
+    floor: +((GROUND - best.cam) / viewH).toFixed(3),
+  };
+}
+
+function fuzzLevels() {
+  const bad = [];
+  for (const level of LEVELS) {
+    const trial = fresh(quietProgress(), LEVELS.indexOf(level));
+    trial.mode = "play";
+    try {
+      for (let frame = 0; frame < 60 * 60; frame++) {
+        const input = {
+          left: Math.random() < 0.08,
+          right: Math.random() < 0.75,
+          jump: Math.random() < 0.18,
+          jumpPressed: Math.random() < 0.06,
+          scratch: false,
+          scratchPressed: Math.random() < 0.04,
+          fish: false,
+          fishPressed: false,
+          action: false,
+          actionPressed: Math.random() < 0.03,
+        };
+        step(trial, 1 / 60, input);
+        if (![trial.player.x, trial.player.y, trial.player.vx, trial.player.vy].every(Number.isFinite)) {
+          bad.push({ id: level.id, frame, why: "not finite" });
+          break;
+        }
+      }
+    } catch (error) {
+      bad.push({ id: level.id, why: String(error).slice(0, 180) });
+    }
+  }
+  return { seconds: 60, levels: LEVELS.length, bad };
+}
+
+function climbTest(id) {
+  const index = LEVELS.findIndex((level) => level.id === id);
+  const trial = fresh(quietProgress(), index);
+  trial.mode = "play";
+  const climb = (trial.level.climbs || [])[0];
+  if (!climb) return { id, reached: false, landed: false, why: "no climb" };
+  const hold = { ...still(), action: true };
+  trial.player.x = climb.x - 16;
+  trial.player.y = GROUND - PH - 12;
+  trial.player.onGround = false;
+  trial.player.vy = -30;
+  let high = trial.player.y;
+  let jumped = false;
+  for (let frame = 0; frame < 280; frame++) {
+    const hop = trial.player.onGround && trial.player.y < GROUND - 80 && !jumped;
+    if (hop) jumped = true;
+    step(trial, 1 / 60, { ...hold, jump: hop, jumpPressed: hop });
+    if (trial.player.y < high) high = trial.player.y;
+  }
+  const off = { ...still(), right: true };
+  for (let frame = 0; frame < 150; frame++) step(trial, 1 / 60, off);
+  for (let frame = 0; frame < 90; frame++) step(trial, 1 / 60, still());
+  return {
+    id,
+    high: Math.round(high),
+    reached: high < GROUND - 130,
+    landed: groundedSpot(trial, trial.player.x, trial.player.y) && trial.player.y < 700,
+    y: Math.round(trial.player.y),
+    fish: trial.level.fishValue,
+  };
+}
+
 window.sunbeam = {
   audio,
   get state() { return state; },
@@ -2215,6 +2504,10 @@ window.sunbeam = {
   enemySheet,
   portrait,
   birdCard,
+  stressPits,
+  fuzzLevels,
+  rehearse,
+  climbTest,
   audit,
   LEVELS,
   show,
