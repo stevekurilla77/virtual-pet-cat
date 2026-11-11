@@ -276,6 +276,26 @@ export class PlayAudio {
   yowl() { this.voice("yowl", 0.74); }
   tweet() { this.play(this.pick("tweet"), { rate: this.vary(), gain: 0.34 }); }
 
+  chime() {
+    if (!this.ctx || this.sfxLevel() <= 0) return;
+    const notes = [523, 659, 784];
+    notes.forEach((freq, i) => {
+      const t = this.ctx.currentTime + i * 0.07;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, t);
+      const level = Math.max(0.0001, 0.045 * this.sfxLevel());
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(level, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      osc.connect(gain);
+      gain.connect(this.sfxBus);
+      osc.start(t);
+      osc.stop(t + 0.18);
+    });
+  }
+
   squeak() { this.blip(920, 0.07, 0.1); }
   chatter() { this.blip(460, 0.08, 0.09); }
   splash() { this.blip(220, 0.11, 0.09); }

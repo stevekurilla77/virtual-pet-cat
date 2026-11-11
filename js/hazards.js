@@ -86,8 +86,9 @@ function addRoutes(level, index) {
   const bonus = [
     { x: tiers[0].x + 40, y: tiers[0].y - 28 },
     { x: tiers[1].x + 30, y: tiers[1].y - 28 },
-    { x: tiers[2].x + 24, y: tiers[2].y - 30, golden: true },
+    { x: tiers[2].x + 18, y: tiers[2].y - 30, golden: true },
   ];
+  level.cans = [{ x: tiers[2].x + 52, y: tiers[2].y - 18, got: false }];
   for (const fish of bonus) {
     level.fish.push({ x: fish.x, y: fish.y, golden: Boolean(fish.golden), phase: fish.x * 0.01, got: false });
   }
@@ -178,6 +179,61 @@ function findLedge(state) {
     return { x: landX, y: block.y - 58 };
   }
   return null;
+}
+
+export function updateCans(state, dt, audio) {
+  const player = state.player;
+  player.food = Math.max(0, (player.food || 0) - dt);
+  player.pounceCd = Math.max(0, (player.pounceCd || 0) - dt);
+  for (const can of state.level.cans || []) {
+    if (can.got) continue;
+    const dx = can.x - (player.x + 16);
+    const dy = can.y - (player.y + 28);
+    if (dx * dx + dy * dy < 36 * 36) {
+      can.got = true;
+      player.food = 9;
+      state.banner = "Wet food energy.";
+      state.bannerT = 1.6;
+      audio.chime();
+      for (let i = 0; i < 10; i++) {
+        state.particles.push({
+          x: can.x, y: can.y,
+          vx: (Math.random() - 0.5) * 90,
+          vy: -30 - Math.random() * 70,
+          life: 0.5, max: 0.5, kind: "spark", color: "#ffe08a",
+        });
+      }
+    }
+  }
+}
+
+export function drawCans(g, level, time) {
+  for (const can of level.cans || []) {
+    if (can.got) continue;
+    const bob = Math.sin(time * 3 + can.x) * 4;
+    g.save();
+    g.translate(can.x, can.y + bob);
+    g.fillStyle = "rgba(255, 220, 120, 0.45)";
+    g.beginPath();
+    g.arc(0, 0, 16 + Math.sin(time * 5) * 1.5, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#f7f3ee";
+    g.beginPath();
+    g.ellipse(0, 2, 14, 10, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#e07a8c";
+    g.fillRect(-12, -4, 24, 10);
+    g.fillStyle = "#fff";
+    g.fillRect(-3, -4, 6, 5);
+    g.strokeStyle = "#c45a4a";
+    g.lineWidth = 1.4;
+    g.beginPath();
+    g.arc(6, -7, 3, 0.2, Math.PI);
+    g.stroke();
+    g.fillStyle = "#fff8e0";
+    g.fillRect(8, -9, 3, 2);
+    g.restore();
+  }
 }
 
 export function drawClimbs(g, level, time) {

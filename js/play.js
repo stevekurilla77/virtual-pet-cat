@@ -3,7 +3,7 @@ import { clonePose, POSES, POSE_KEYS } from "./poses.js";
 import { COAT_ORDER, COATS, EYE_ORDER, EYES, cleanName, swatchBackground } from "./coats.js";
 import { PlayAudio } from "./play-audio.js";
 import { bakeScene, drawLady, drawMotion } from "./scenery.js";
-import { applyClimb, dressLevel, drawBird, drawClimbs, drawHazards, nearClimb, nearest, updateHazards, birdSheet } from "./hazards.js";
+import { applyClimb, dressLevel, drawBird, drawCans, drawClimbs, drawHazards, nearClimb, nearest, updateCans, updateHazards, birdSheet } from "./hazards.js";
 
 const KEY = "sunbeam-play";
 const GROUND = 470;
@@ -499,6 +499,8 @@ function fresh(progress, levelIndex) {
       swipeHit: false,
       airJump: false,
       pounce: 0,
+      pounceCd: 0,
+      food: 0,
       grapple: null,
       mantle: null,
       cling: null,
@@ -561,11 +563,28 @@ function movePlayer(state, dt, input) {
     player.vx -= sign * Math.min(Math.abs(player.vx), 1600 * grip * dt);
   }
   player.vx += (player.wind || 0) * dt;
-  player.vx = Math.max(-MAXRUN, Math.min(MAXRUN, player.vx));
+  const pace = player.food > 0 ? 1.34 : 1;
+  player.vx = Math.max(-MAXRUN * pace, Math.min(MAXRUN * pace, player.vx));
   if (climbMode !== "cling") player.x += player.vx * dt;
   else if (player.cling) player.x = player.cling.x - 16;
   player.coyote = player.onGround ? 0.12 : Math.max(0, player.coyote - dt);
-  player.jumpBuf = input.jumpPressed ? 0.12 : Math.max(0, player.jumpBuf - dt);
+  const tapped = input.jumpPressed && !player.prevJump;
+  player.prevJump = !!input.jumpPressed;
+  if (tapped) {
+    const since = state.time - (player.lastJumpTap == null ? -10 : player.lastJumpTap);
+    const doublet = since >= 0.04 && since <= 0.3;
+    player.lastJumpTap = state.time;
+    const justLeft = !player.onGround && (player.leftGround || 0) < 0.12;
+    if (doublet && player.pounceCd <= 0 && (pounceTarget(state) || justLeft)) startPounce(state);
+    else if (!player.onGround && player.airJump && state.levelIndex >= 1) {
+      player.vy = JUMP * 0.88 * (player.food > 0 ? 1.28 : 1);
+      player.airJump = false;
+      player.jumpBuf = 0;
+      for (let i = 0; i < 5; i++) {
+        state.particles.push({ x: player.x + 16, y: player.y + 40, vx: (Math.random() - 0.5) * 40, vy: 20, life: 0.3, max: 0.3, kind: "puff", color: "#fff" });
+      }
+    } else player.jumpBuf = 0.12;
+  } else player.jumpBuf = Math.max(0, player.jumpBuf - dt);
   const gravity = !input.jump && player.vy < 0 ? GRAV * 2.15 : GRAV;
   if (climbMode !== "cling") player.vy += gravity * dt;
   const was = player.y;
@@ -583,21 +602,13 @@ function movePlayer(state, dt, input) {
     }
   }
   if (player.jumpBuf > 0 && (player.onGround || player.coyote > 0)) {
-    player.vy = JUMP;
+    player.vy = JUMP * (player.food > 0 ? 1.28 : 1);
     player.onGround = false;
     player.coyote = 0;
     player.jumpBuf = 0;
     player.squash = 0.8;
     player.airJump = state.levelIndex >= 1;
     audio.meow("kitten");
-  } else if (input.jumpPressed && player.airJump && !player.onGround) {
-    player.vy = JUMP * 0.88;
-    player.airJump = false;
-    player.jumpBuf = 0;
-    state.banner = "";
-    for (let i = 0; i < 5; i++) {
-      state.particles.push({ x: player.x + 16, y: player.y + 40, vx: (Math.random() - 0.5) * 40, vy: 20, life: 0.3, max: 0.3, kind: "puff", color: "#fff" });
-    }
   }
   if (player.bounce) {
     player.vy = player.bounce;
@@ -781,6 +792,10 @@ function collectFish(state, fish) {
   fish.got = true;
   const bank = fish.golden ? 3 : 1;
   if (!fish.bonus) state.fishGot += 1;
+  if (state.player.food > 0 && !fish.bonus) {
+    state.fishGot += 1;
+    state.progress.fishBank += 1;
+  }
   state.progress.fishBank += bank;
   audio.ding(fish.golden);
   state.particles.push({
@@ -929,15 +944,22 @@ function updateEnemies(state, dt) {
     nearest = Math.min(nearest, Math.abs(enemy.x - player.x));
     const scale = enemy.big ? 1.4 : 1;
     const box = { x: enemy.x - 16 * scale, y: enemy.y - 16 * scale, w: 36 * scale, h: 32 * scale };
+    const reach = player.food > 0 ? 84 : 70;
+    const lunge = {
+      x: player.facing > 0 ? player.x + 4 : player.x - reach + 8,
+      y: player.y + 4,
+      w: reach,
+      h: 54,
+    };
     const stomp = player.vy > 90 && player.y + PH < enemy.y + 10 && rectsOverlap({ x: player.x, y: player.y + PH - 12, w: PW, h: 16 }, box);
-    if (stomp || (player.pounce > 0 && rectsOverlap({ x: player.x - 6, y: player.y + 20, w: PW + 12, h: 40 }, box))) {
-      enemy.hp = (enemy.hp || 1) - 1;
+    if (stomp || (player.pounce > 0 && rectsOverlap(lunge, box))) {
+      enemy.hp = player.food > 0 ? 0 : (enemy.hp || 1) - 1;
       player.vy = -300;
       if (enemy.hp <= 0) shoo(state, enemy);
       continue;
     }
     if (player.swipeHit && rectsOverlap(attackBox(player), box)) {
-      enemy.hp = (enemy.hp || 1) - 1;
+      enemy.hp = player.food > 0 ? 0 : (enemy.hp || 1) - 1;
       if (enemy.hp <= 0) shoo(state, enemy);
       else {
         enemy.stun = 0.6;
@@ -1090,9 +1112,12 @@ function step(state, dt, input) {
     state._poke = 0;
     hurt(state, knock);
   }
-  if (state.levelIndex >= 1 && !state.hintedJump && player.onGround) {
+  updateCans(state, dt, audio);
+  if (!state.hintedJump && player.onGround && state.time > 0.4) {
     state.hintedJump = true;
-    state.banner = "Double jump: tap Jump again in the air.";
+    state.banner = state.levelIndex >= 1
+      ? "Double-tap Jump to pounce. In the air, a clear second tap double-jumps."
+      : "Double-tap Jump to pounce.";
     state.bannerT = 2.4;
   }
   if (state.fishing) updateFishing(state, dt, input);
@@ -1160,8 +1185,41 @@ function policy(state) {
     fish: false,
     fishPressed: false,
     action: false,
-    actionPressed: !player.onGround && foe && player.vy > 40,
+    actionPressed: false,
   };
+}
+
+function pounceTarget(state) {
+  const player = state.player;
+  const reach = 110;
+  const ahead = (x) => player.facing > 0 ? x > player.x - 12 && x < player.x + reach : x < player.x + PW + 12 && x > player.x - reach;
+  const enemy = state.level.enemies.some((item) => item.alive !== false && !item.flee && ahead(item.x) && Math.abs(item.y - player.y) < 78);
+  const hazard = (state.level.hazards || []).some((item) => item.hop && ahead(item.x));
+  return enemy || hazard;
+}
+
+function startPounce(state) {
+  const player = state.player;
+  player.pounce = 0.26;
+  player.pounceCd = 0.42;
+  player.vx = player.facing * (player.food > 0 ? 460 : 360);
+  player.vy = Math.min(player.vy, -140);
+  player.onGround = false;
+  player.airJump = false;
+  player.jumpBuf = 0;
+  audio.scratch();
+  for (let i = 0; i < 6; i++) {
+    state.particles.push({
+      x: player.x + player.facing * 20,
+      y: player.y + 24,
+      vx: player.facing * 40,
+      vy: -20 - Math.random() * 30,
+      life: 0.28,
+      max: 0.28,
+      kind: "spark",
+      color: "#fff6ea",
+    });
+  }
 }
 
 function useAction(state) {
@@ -1169,10 +1227,6 @@ function useAction(state) {
   const post = nearest(state.level, "post", player.x + 16, 28);
   const hook = nearest(state.level, "hook", player.x + 16, 90);
   if (nearClimb(state)) return;
-  if (!player.onGround && player.vy > 20) {
-    player.pounce = 0.18;
-    return;
-  }
   if (post) {
     player.vy = -220;
     player.x = post.x - 16;
@@ -1643,11 +1697,22 @@ function drawWorld(state) {
     ctx.stroke();
   }
   drawClimbs(ctx, state.level, state.time);
+  drawCans(ctx, state.level, state.time);
   drawHazards(ctx, state);
   drawScenery(ctx, level, state.time, state.camX, w / state.dpr);
   const reunion = state.won || Math.abs(state.player.x - level.owner.x) < 120;
   drawOwner(ctx, level.owner, state.time, level.theme, reunion);
   drawCatShadow(ctx, state);
+  if (state.player.food > 0) {
+    ctx.save();
+    ctx.translate(state.player.x + 16, state.player.y + 30);
+    ctx.globalAlpha = 0.28 + Math.sin(state.time * 8) * 0.08;
+    ctx.fillStyle = "#ffe08a";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 28, 34, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
   if (state.player.invuln <= 0 || Math.sin(state.time * 40) > 0) paintCat(ctx, state.cat, state.time);
   for (const bit of state.particles) {
     ctx.globalAlpha = Math.max(0, bit.life / bit.max);
@@ -1775,6 +1840,24 @@ function paintHud() {
     return px > water.x - 40 && px < water.x + water.w + 40;
   });
   fishBtn.hidden = !(state.gotRod && nearWater);
+  const ring = document.querySelector("#food-ring");
+  if (ring) {
+    const left = state.player.food || 0;
+    ring.hidden = left <= 0;
+    if (left > 0) {
+      const pen = ring.getContext("2d");
+      pen.clearRect(0, 0, 36, 36);
+      pen.strokeStyle = "rgba(255,255,255,0.45)";
+      pen.lineWidth = 4;
+      pen.beginPath();
+      pen.arc(18, 18, 12, 0, Math.PI * 2);
+      pen.stroke();
+      pen.strokeStyle = "#e2b84a";
+      pen.beginPath();
+      pen.arc(18, 18, 12, -Math.PI / 2, -Math.PI / 2 + (left / 9) * Math.PI * 2);
+      pen.stroke();
+    }
+  }
   const actionBtn = document.querySelector("#action");
   if (actionBtn) {
     const label = actionName(state);
@@ -1786,7 +1869,6 @@ function paintHud() {
 function actionName(state) {
   const player = state.player;
   if (player.cling || nearClimb(state)) return "Climb";
-  if (!player.onGround && player.vy > 0) return "Pounce";
   if (nearest(state.level, "post", player.x, 36)) return "Climb";
   if (nearest(state.level, "hook", player.x, 100)) return "Yarn";
   return "";
@@ -2461,6 +2543,40 @@ function fuzzLevels() {
   return { seconds: 60, levels: LEVELS.length, bad };
 }
 
+function tapChoice() {
+  const press = { ...still(), jump: true, jumpPressed: true };
+  function run(index, gap, enemy) {
+    const trial = fresh(quietProgress(), index);
+    trial.mode = "play";
+    for (let i = 0; i < 12; i++) step(trial, 1 / 60, still());
+    trial.player.x = 240;
+    trial.player.facing = 1;
+    for (const item of trial.level.enemies) item.x = 8000;
+    step(trial, 1 / 60, press);
+    for (let i = 0; i < gap; i++) step(trial, 1 / 60, still());
+    if (enemy) {
+      const foe = trial.level.enemies.find((item) => item.alive !== false);
+      if (foe) {
+        foe.x = trial.player.x + 60;
+        foe.y = trial.player.y + 8;
+        foe.alive = true;
+        foe.flee = 0;
+      }
+    }
+    step(trial, 1 / 60, press);
+    return {
+      pounce: trial.player.pounce > 0,
+      airJump: trial.player.airJump,
+      vy: Math.round(trial.player.vy),
+    };
+  }
+  return {
+    takeoffPounce: run(0, 4, false),
+    airPounce: run(1, 10, true),
+    airDouble: run(1, 10, false),
+  };
+}
+
 function climbTest(id) {
   const index = LEVELS.findIndex((level) => level.id === id);
   const trial = fresh(quietProgress(), index);
@@ -2508,6 +2624,7 @@ window.sunbeam = {
   fuzzLevels,
   rehearse,
   climbTest,
+  tapChoice,
   audit,
   LEVELS,
   show,
