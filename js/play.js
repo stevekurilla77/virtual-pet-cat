@@ -1981,15 +1981,30 @@ function drawWear(g, player) {
   g.restore();
 }
 
+function clueInk(lit, color) {
+  return lit ? color : "#b3a79c";
+}
+
 function drawClue(g, clue, time) {
-  const bob = Math.sin(time * 3) * 4;
+  const bob = Math.sin(time * 3) * 5;
   g.save();
   g.translate(clue.x, clue.y + bob);
-  g.fillStyle = "rgba(255, 220, 120, 0.55)";
+  const glow = g.createRadialGradient(0, 0, 6, 0, 0, 48);
+  glow.addColorStop(0, "rgba(255, 236, 180, 0.85)");
+  glow.addColorStop(1, "rgba(255, 214, 120, 0)");
+  g.fillStyle = glow;
   g.beginPath();
-  g.arc(0, 0, 34 + Math.sin(time * 5) * 3, 0, Math.PI * 2);
+  g.arc(0, 0, 48, 0, Math.PI * 2);
   g.fill();
-  drawClueIcon(g, clue.id, 0, 0, 3.1, true);
+  for (let i = 0; i < 5; i++) {
+    const angle = time * 1.6 + i * 1.25;
+    const radius = 30 + Math.sin(time * 3 + i) * 5;
+    g.globalAlpha = 0.45 + Math.sin(time * 5 + i) * 0.4;
+    g.fillStyle = i % 2 ? "#fff" : "#ffe7a3";
+    g.fillRect(Math.cos(angle) * radius, Math.sin(angle) * radius, 2.2, 2.2);
+  }
+  g.globalAlpha = 1;
+  drawClueIcon(g, clue.id, 0, 0, 3.5, true);
   g.restore();
 }
 
@@ -1997,49 +2012,200 @@ function drawClueIcon(g, id, x, y, scale, lit) {
   g.save();
   g.translate(x, y);
   g.scale(scale, scale);
-  g.globalAlpha = lit ? 1 : 0.35;
-  g.fillStyle = lit ? "#f2c14b" : "#8d7b6e";
-  g.strokeStyle = lit ? "#8a5a32" : "#6a5a50";
-  g.lineWidth = 1.4;
-  if (id === "glasses") {
-    g.lineWidth = 2.2;
-    g.beginPath();
-    g.arc(-7, 0, 5.5, 0, Math.PI * 2);
-    g.arc(7, 0, 5.5, 0, Math.PI * 2);
-    g.stroke();
-    g.beginPath();
-    g.moveTo(-2, 0);
-    g.lineTo(2, 0);
-    g.stroke();
-  } else if (id === "slippers") {
-    g.beginPath();
-    g.ellipse(-6, 2, 6, 3.2, -0.2, 0, Math.PI * 2);
-    g.ellipse(6, 2, 6, 3.2, 0.2, 0, Math.PI * 2);
-    g.fill();
-  } else if (id === "yarn") {
-    g.beginPath();
-    g.arc(-2, 1, 6, 0, Math.PI * 2);
-    g.fill();
-    g.beginPath();
-    g.moveTo(3, 0);
-    g.quadraticCurveTo(10, -6, 12, 2);
-    g.stroke();
-    g.fillStyle = lit ? "#6eae84" : "#8d7b6e";
-    g.beginPath();
-    g.ellipse(8, -7, 6, 2.4, -0.4, 0, Math.PI * 2);
-    g.fill();
-  } else {
-    g.beginPath();
-    g.arc(-4, -2, 3.2, 0, Math.PI * 2);
-    g.stroke();
-    g.beginPath();
-    g.moveTo(-1, 0);
-    g.lineTo(8, 6);
-    g.lineTo(6, 8);
-    g.stroke();
-    g.fillRect(2, 4, 7, 4);
-  }
+  g.lineCap = "round";
+  g.lineJoin = "round";
+  if (id === "glasses") drawGlasses(g, lit);
+  else if (id === "slippers") drawSlippers(g, lit);
+  else if (id === "yarn") drawYarn(g, lit);
+  else drawHandbag(g, lit);
   g.restore();
+}
+
+function drawGlasses(g, lit) {
+  const gold = clueInk(lit, "#e0c27a");
+  const goldDark = clueInk(lit, "#b08a42");
+  g.strokeStyle = goldDark;
+  g.lineWidth = 1.05;
+  g.beginPath();
+  g.moveTo(-13, -1);
+  g.lineTo(-16, 3);
+  g.moveTo(13, -1);
+  g.lineTo(16, 3);
+  g.stroke();
+  g.fillStyle = lit ? "rgba(176, 214, 232, 0.62)" : "rgba(190, 184, 176, 0.45)";
+  g.beginPath();
+  g.arc(-7, 0, 5.6, 0, Math.PI * 2);
+  g.arc(7, 0, 5.6, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = gold;
+  g.lineWidth = 1.25;
+  g.beginPath();
+  g.arc(-7, 0, 5.6, 0, Math.PI * 2);
+  g.stroke();
+  g.beginPath();
+  g.arc(7, 0, 5.6, 0, Math.PI * 2);
+  g.stroke();
+  g.beginPath();
+  g.moveTo(-1.6, -0.2);
+  g.quadraticCurveTo(0, -2.4, 1.6, -0.2);
+  g.stroke();
+  g.fillStyle = goldDark;
+  g.beginPath();
+  g.arc(-12.4, -0.6, 0.85, 0, Math.PI * 2);
+  g.arc(12.4, -0.6, 0.85, 0, Math.PI * 2);
+  g.fill();
+  if (lit) {
+    g.fillStyle = "rgba(255,255,255,0.9)";
+    g.beginPath();
+    g.ellipse(-8.6, -1.8, 1.5, 0.55, -0.7, 0, Math.PI * 2);
+    g.ellipse(5.4, -2, 1.3, 0.5, -0.5, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.strokeStyle = clueInk(lit, "#f7f3ee");
+  g.lineWidth = 0.55;
+  g.beginPath();
+  g.moveTo(-7, 5.4);
+  g.quadraticCurveTo(0, 13, 7, 5.4);
+  g.stroke();
+  [[-6.2, 6.6], [-3, 9.6], [0, 11.2], [3, 9.6], [6.2, 6.6]].forEach((bead, index) => {
+    g.fillStyle = clueInk(lit, index % 2 ? "#fffaf4" : "#f0b7c8");
+    g.beginPath();
+    g.arc(bead[0], bead[1], 1.05, 0, Math.PI * 2);
+    g.fill();
+  });
+}
+
+function drawSlippers(g, lit) {
+  [-6, 6].forEach((x, index) => {
+    g.save();
+    g.translate(x, 1);
+    g.scale(index ? -1 : 1, 1);
+    g.fillStyle = clueInk(lit, "#c98aaa");
+    g.beginPath();
+    g.ellipse(0, 4.2, 7.2, 2.1, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = clueInk(lit, "#f6c6e0");
+    g.beginPath();
+    g.ellipse(0, 0.4, 7.4, 4, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = clueInk(lit, "#ffe4f4");
+    g.beginPath();
+    g.ellipse(-1, -0.8, 4.2, 1.8, -0.2, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = clueInk(lit, "#e7a4c4");
+    g.lineWidth = 0.55;
+    g.beginPath();
+    g.moveTo(-4, -0.6);
+    g.quadraticCurveTo(0, 1.2, 4, -0.8);
+    g.moveTo(-3, 1.6);
+    g.quadraticCurveTo(0, 3, 3.6, 1.2);
+    g.stroke();
+    g.fillStyle = clueInk(lit, "#fff8fc");
+    g.beginPath();
+    g.arc(4.6, -2.2, 1.7, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = clueInk(lit, "rgba(176, 92, 124, 0.35)");
+    g.beginPath();
+    g.ellipse(-3.5, 1.2, 2, 1.1, 0, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  });
+}
+
+function drawYarn(g, lit) {
+  g.fillStyle = clueInk(lit, "#c43758");
+  g.beginPath();
+  g.arc(-1, 0, 6.6, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = clueInk(lit, "#f08aa0");
+  g.lineWidth = 0.75;
+  g.beginPath();
+  g.arc(-1, 0, 4.6, 0.3, 2.4);
+  g.arc(-1, 0, 2.8, 2.2, 4.8);
+  g.stroke();
+  g.strokeStyle = clueInk(lit, "#8c243c");
+  g.beginPath();
+  g.arc(-1, 0, 5.6, -0.8, 1.2);
+  g.stroke();
+  g.fillStyle = lit ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.25)";
+  g.beginPath();
+  g.ellipse(-3, -1.6, 1.8, 0.9, -0.6, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = clueInk(lit, "#f08aa0");
+  g.lineWidth = 0.7;
+  g.beginPath();
+  g.moveTo(4, 3);
+  g.quadraticCurveTo(11, 7, 13, 1);
+  g.stroke();
+  g.strokeStyle = clueInk(lit, "#efe8df");
+  g.lineWidth = 1.05;
+  g.beginPath();
+  g.moveTo(-5, -3);
+  g.lineTo(7, -9);
+  g.moveTo(-3, 2);
+  g.lineTo(9, -1);
+  g.stroke();
+  g.fillStyle = clueInk(lit, "#d9cbb8");
+  g.beginPath();
+  g.arc(7, -9, 1.05, 0, Math.PI * 2);
+  g.arc(9, -1, 1.05, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = clueInk(lit, "#f0a8bc");
+  g.fillRect(-2, 5.2, 7, 4.6);
+  g.strokeStyle = clueInk(lit, "#c86a84");
+  g.lineWidth = 0.45;
+  g.beginPath();
+  g.moveTo(-2, 6.4);
+  g.lineTo(5, 6.4);
+  g.moveTo(-2, 7.8);
+  g.lineTo(5, 7.8);
+  g.moveTo(-2, 9.1);
+  g.lineTo(5, 9.1);
+  g.stroke();
+}
+
+function drawHandbag(g, lit) {
+  g.strokeStyle = clueInk(lit, "#6d2a3a");
+  g.lineWidth = 1.35;
+  g.beginPath();
+  g.moveTo(-5, -2);
+  g.quadraticCurveTo(0, -11, 6, -2);
+  g.stroke();
+  g.fillStyle = clueInk(lit, "#9a3d52");
+  g.beginPath();
+  g.moveTo(-8, -2);
+  g.lineTo(8, -2);
+  g.quadraticCurveTo(9, 8, 6, 9);
+  g.lineTo(-6, 9);
+  g.quadraticCurveTo(-9, 8, -8, -2);
+  g.closePath();
+  g.fill();
+  g.fillStyle = clueInk(lit, "#c45d72");
+  g.fillRect(-6.2, -1, 2.6, 8);
+  g.strokeStyle = clueInk(lit, "#f3d2c8");
+  g.lineWidth = 0.45;
+  g.setLineDash([0.9, 0.9]);
+  g.strokeRect(-6.2, -0.4, 12.4, 8);
+  g.setLineDash([]);
+  g.fillStyle = clueInk(lit, "#e6c36a");
+  g.fillRect(-2.1, -3.1, 4.2, 2);
+  g.strokeStyle = clueInk(lit, "#f2d56a");
+  g.lineWidth = 0.9;
+  g.beginPath();
+  g.arc(10, 1.5, 2.1, 0, Math.PI * 2);
+  g.stroke();
+  g.strokeStyle = clueInk(lit, "#f4f0e6");
+  g.lineWidth = 0.95;
+  g.beginPath();
+  g.moveTo(11.4, 2.6);
+  g.lineTo(15.2, 7);
+  g.moveTo(10.2, 3.2);
+  g.lineTo(13.4, 8.4);
+  g.stroke();
+  g.fillStyle = clueInk(lit, "#f2c14b");
+  g.beginPath();
+  g.arc(15.4, 7.6, 1.15, 0, Math.PI * 2);
+  g.fill();
 }
 
 function drawOwner(g, owner, time, theme, reunion, stars) {
@@ -2411,10 +2577,11 @@ function paintHud() {
   const tracker = document.querySelector("#goal-tracker");
   if (tracker) {
     const pen = tracker.getContext("2d");
+    pen.setTransform(3, 0, 0, 3, 0, 0);
     pen.clearRect(0, 0, 148, 32);
     CLUES.forEach((spec, index) => {
       const found = !!(state.progress.clues && state.progress.clues[spec.id]);
-      drawClueIcon(pen, spec.id, 18 + index * 36, 16, 1.15, found);
+      drawClueIcon(pen, spec.id, 18 + index * 36, 16, 1.05, found);
     });
   }
   banner.hidden = state.bannerT <= 0;
@@ -2601,7 +2768,7 @@ function drawReunion() {
       g.beginPath();
       g.arc(canvas.width * 0.5, canvas.height * 0.55, 54, 0, Math.PI * 2);
       g.fill();
-      drawClueIcon(g, clue.id, canvas.width * 0.5, canvas.height * 0.55, 4.2, true);
+      drawClueIcon(g, clue.id, canvas.width * 0.5, canvas.height * 0.55, 7.2, true);
     }
     return;
   }
