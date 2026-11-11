@@ -338,7 +338,8 @@ input[type="range"] { height: 28px; padding: 0; }
 }
 
 @media (max-height: 420px) {
-  .padbtn { width: 54px; height: 54px; border-radius: 18px; font-size: 15px; }
+  .padbtn, .dpad .padbtn { width: 52px; height: 52px; border-radius: 16px; font-size: 15px; }
+  .dpad { grid-template-columns: 52px 52px 52px; gap: 4px; }
   .padbtn.small { width: 46px; height: 46px; }
   .cluster { gap: 6px; bottom: calc(6px + env(safe-area-inset-bottom)); }
   #hud { padding-top: calc(4px + env(safe-area-inset-top)); }
@@ -369,11 +370,13 @@ input[type="range"] { height: 28px; padding: 0; }
   z-index: 4;
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 0 calc(12px + env(safe-area-inset-left));
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: calc(8px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 0 calc(12px + env(safe-area-inset-left));
   pointer-events: none;
 }
+#level-name { margin-right: auto; }
 
 #progress {
   flex: 1 0 100%;
@@ -429,18 +432,34 @@ input[type="range"] { height: 28px; padding: 0; }
   pointer-events: auto;
 }
 
-.cluster.left { left: calc(14px + env(safe-area-inset-left)); align-items: flex-end; }
-.steer { display: flex; flex-direction: column; gap: 8px; }
-#steer-vert[hidden] { display: none !important; }
+.cluster.left { left: calc(10px + env(safe-area-inset-left)); }
+.dpad {
+  display: grid;
+  grid-template-columns: 64px 64px 64px;
+  grid-template-areas:
+    ". up ."
+    "left . right"
+    ". down .";
+  gap: 6px;
+}
+#up { grid-area: up; }
+#left { grid-area: left; }
+#right { grid-area: right; }
+#down { grid-area: down; }
+.padbtn:disabled {
+  opacity: 0.62;
+}
 .cluster.right { right: calc(14px + env(safe-area-inset-right)); }
 
+.dpad .padbtn { width: 64px; height: 64px; }
 .padbtn {
-  width: 88px;
-  height: 88px;
+  width: 76px;
+  height: 76px;
   border-radius: 28px;
   touch-action: none;
-  background: rgba(255, 248, 242, 0.38);
-  border: 1px solid rgba(255,255,255,0.55);
+  background: rgba(255, 248, 242, 0.72);
+  border: 1px solid rgba(255,255,255,0.7);
+  box-shadow: 0 8px 18px rgba(58, 36, 22, 0.16);
   backdrop-filter: blur(10px);
   font-size: 26px;
   font-weight: 800;

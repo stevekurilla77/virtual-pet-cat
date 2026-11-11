@@ -220,7 +220,7 @@ function lay(spec) {
     music: spec.music,
     width,
     theme: spec.theme,
-    spawn: 70,
+    spawn: 280,
     owner,
     checkpoint: world.checkpoints[0] ? world.checkpoints[0].x : 500,
     checkpoints: world.checkpoints,
@@ -747,6 +747,22 @@ function respawn(state) {
   state.pitTime = 0;
   state.banner = "Back on solid ground";
   state.bannerT = 1.3;
+  clearAround(state, player.x);
+}
+
+function clearAround(state, x) {
+  const ahead = x + 16;
+  for (const enemy of state.level.enemies) {
+    const spot = enemy.perchX == null ? enemy.x : Math.min(enemy.x, enemy.perchX);
+    if (Math.abs(spot - ahead) > 420) continue;
+    const shift = ahead + 320 - spot;
+    if (shift <= 8) continue;
+    enemy.x += shift;
+    if (enemy.perchX != null) enemy.perchX += shift;
+    if (enemy.min != null) enemy.min += shift;
+    if (enemy.max != null) enemy.max += shift;
+  }
+  state.spawnGrace = 1.6;
 }
 
 function sanitize(state, dt) {
@@ -1142,7 +1158,7 @@ function updateEnemies(state, dt) {
       continue;
     }
     if (enemy.stun > 0) continue;
-    if (player.invuln <= 0 && rectsOverlap(body(player), box)) hurt(state, enemy.x < player.x ? 180 : -180);
+    if (!(state.spawnGrace > 0) && player.invuln <= 0 && rectsOverlap(body(player), box)) hurt(state, enemy.x < player.x ? 180 : -180);
     if (enemy.kind === "bird" && (enemy.dive === "warn" || enemy.dive === "go") && enemy.x < player.x) {
       enemy.dive = null;
       enemy.diveT = 0;
@@ -1164,7 +1180,7 @@ function updateEnemies(state, dt) {
       state.particles.push({ x: shot.x, y: shot.y, vx: 0, vy: -30, life: 0.3, max: 0.3, kind: "star", color: "#fff3b0" });
       return false;
     }
-    if (!player.ride && player.invuln <= 0 && Math.hypot(shot.x - cx, shot.y - cy) < 20) {
+    if (!player.ride && !(state.spawnGrace > 0) && player.invuln <= 0 && Math.hypot(shot.x - cx, shot.y - cy) < 20) {
       hurt(state, shot.vx > 0 ? 120 : -120);
       return false;
     }
@@ -1373,6 +1389,7 @@ function step(state, dt, input) {
   state.bannerT = Math.max(0, state.bannerT - dt);
   state.shake = Math.max(0, state.shake - dt * 12);
   state.comboT = Math.max(0, (state.comboT || 0) - dt);
+  state.spawnGrace = Math.max(0, (state.spawnGrace || 0) - dt);
   if ((player.boost || 0) > 0) player.boost -= dt;
   sanitize(state, dt);
   audio.setTension(state.tension);
@@ -2859,7 +2876,7 @@ function nearestPad(x, y) {
   let bestD = 96;
   for (const [key, selector] of padKeys()) {
     const el = document.querySelector(selector);
-    if (!el || el.hidden) continue;
+    if (!el || el.hidden || el.disabled) continue;
     const rect = el.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
@@ -2874,10 +2891,13 @@ function nearestPad(x, y) {
 }
 
 function syncRidePad() {
-  const vert = document.querySelector("#steer-vert");
-  if (!vert) return;
   const riding = !!(state && state.player && state.player.ride);
-  vert.hidden = !riding;
+  for (const id of ["up", "down"]) {
+    const el = document.querySelector(`#${id}`);
+    if (!el) continue;
+    el.disabled = !riding;
+    el.classList.toggle("idle", !riding);
+  }
   if (!riding) {
     held.up = false;
     held.down = false;
@@ -3717,11 +3737,13 @@ function rideControlTest() {
   if (!state) startLevel(0);
   state.player.ride = null;
   syncRidePad();
-  const hiddenBefore = document.querySelector("#steer-vert").hidden === true;
+  const upBtn = document.querySelector("#up");
+  const hiddenBefore = upBtn.disabled === true;
   state.player.ride = { ride: 8 };
   syncRidePad();
-  const shown = document.querySelector("#steer-vert").hidden === false;
+  const shown = upBtn.disabled === false;
   const up = document.querySelector("#up").getBoundingClientRect();
+  const left = document.querySelector("#left").getBoundingClientRect();
   const right = document.querySelector("#right").getBoundingClientRect();
   const down = document.querySelector("#down").getBoundingClientRect();
   const pad = document.querySelector("#pad");
@@ -3744,7 +3766,8 @@ function rideControlTest() {
   const keyClear = held.down === false;
   state.player.ride = null;
   syncRidePad();
-  const hiddenAfter = document.querySelector("#steer-vert").hidden === true;
+  const hiddenAfter = upBtn.disabled === true;
+  const cross = up.bottom <= left.top + 6 && down.top >= left.bottom - 6 && left.right <= right.left + 4;
   return {
     hiddenBefore,
     shown,
@@ -3754,8 +3777,47 @@ function rideControlTest() {
     keyDown,
     keyClear,
     hiddenAfter,
-    ok: hiddenBefore && shown && both && rightStays && downHeld && keyDown && keyClear && hiddenAfter,
+    cross,
+    ok: hiddenBefore && shown && both && rightStays && downHeld && keyDown && keyClear && hiddenAfter && cross,
   };
+}
+
+function spawnTest() {
+  const bad = [];
+  const safeOf = (level) => (level.spawn || 70) + 840;
+  const scan = (level, tag) => {
+    const spawn = level.spawn || 70;
+    const safe = safeOf(level);
+    for (const enemy of level.enemies) {
+      const x = enemy.perchX == null ? enemy.x : Math.min(enemy.x, enemy.perchX);
+      if (x < spawn - 4) bad.push({ id: level.id, tag, why: "behind", kind: enemy.kind, x: Math.round(x) });
+      if (x < safe) bad.push({ id: level.id, tag, why: "safe", kind: enemy.kind, x: Math.round(x) });
+    }
+    for (const hazard of level.hazards || []) {
+      if (hazard.x < safe) bad.push({ id: level.id, tag, why: "hazard", kind: hazard.kind, x: Math.round(hazard.x) });
+    }
+    for (let i = 0; i < level.enemies.length; i++) {
+      for (let j = i + 1; j < level.enemies.length; j++) {
+        const a = level.enemies[i];
+        const b = level.enemies[j];
+        if (Math.abs(a.y - b.y) < 40 && Math.hypot(a.x - b.x, a.y - b.y) < 48) {
+          bad.push({ id: level.id, tag, why: "overlap", kind: a.kind, x: Math.round(a.x), other: b.kind });
+        }
+      }
+    }
+  };
+  for (const level of LEVELS) scan(level, "template");
+  const first = fresh(quietProgress(), 0);
+  first.mode = "play";
+  scan(first.level, "fresh");
+  const again = fresh(quietProgress(), 0);
+  again.mode = "play";
+  scan(again.level, "restart");
+  if (again.level.enemies.length !== first.level.enemies.length) bad.push({ why: "count", a: first.level.enemies.length, b: again.level.enemies.length });
+  clearAround(again, again.level.spawn || 70);
+  scan(again.level, "respawn");
+  if (bad.length) throw new Error(`spawn ${JSON.stringify(bad.slice(0, 6))}`);
+  return { ok: true, enemies: first.level.enemies.length };
 }
 
 function storyTest() {
@@ -4059,6 +4121,7 @@ window.sunbeam = {
   inputTest,
   rideControlTest,
   storyTest,
+  spawnTest,
   stepTest,
   enemyZoom,
   behaviorCard,

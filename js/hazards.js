@@ -73,9 +73,7 @@ function spiceEnemies(level) {
       mice += 1;
       if (mice % 3 === 0) enemy.hole = true;
       if (mice % 2 === 0) enemy.cheese = true;
-      if (mice % 4 === 0) {
-        extras.push({ ...enemy, x: enemy.x + 30, hole: false, cheese: true, group: true, home: enemy.home });
-      }
+      if (mice % 4 === 0) enemy.group = true;
     }
     if (enemy.kind === "bird") {
       birds += 1;
@@ -114,6 +112,42 @@ function spiceEnemies(level) {
     });
   }
   level.enemies.push(...extras);
+  openTheStart(level);
+}
+
+function openTheStart(level) {
+  const spawn = level.spawn || 70;
+  const safe = spawn + 840;
+  const kept = [];
+  for (const enemy of level.enemies) {
+    const x = enemy.perchX == null ? enemy.x : Math.min(enemy.x, enemy.perchX);
+    if (x < safe) continue;
+    const piled = kept.some((other) => other.kind === enemy.kind && Math.hypot(other.x - enemy.x, (other.y || 0) - (enemy.y || 0)) < 72);
+    if (piled) continue;
+    kept.push(enemy);
+  }
+  kept.sort((a, b) => a.x - b.x);
+  for (let i = 1; i < kept.length; i++) {
+    const prev = kept[i - 1];
+    const enemy = kept[i];
+    if (Math.abs((prev.y || 0) - (enemy.y || 0)) > 48) continue;
+    const gap = enemy.x - prev.x;
+    if (gap >= 96) continue;
+    const shift = 96 - gap;
+    enemy.x += shift;
+    if (enemy.perchX != null) enemy.perchX += shift;
+    if (enemy.min != null) enemy.min += shift;
+    if (enemy.max != null) enemy.max += shift;
+  }
+  level.enemies = kept;
+  let hop = 0;
+  for (const hazard of level.hazards || []) {
+    if (hazard.x >= safe) continue;
+    hazard.x = safe + 80 + hop * 170;
+    hop += 1;
+    if (hazard.min != null) hazard.min = Math.max(hazard.min, hazard.x - 70);
+    if (hazard.max != null) hazard.max = Math.max(hazard.max, hazard.x + 140);
+  }
 }
 
 const ROUTE = [
@@ -520,16 +554,19 @@ function addJuice(level, index) {
     const mid = floors.find((block) => block.x < level.width * 0.62 && block.x + block.w > level.width * 0.38) || floors[0];
     if (mid) level.checkpoints.push({ x: mid.x + mid.w * 0.55, y: GROUND - 58 });
   }
-  level.enemies.push({
-    kind: "mouse",
-    x: 24,
-    y: GROUND - 22,
-    min: 16,
-    max: Math.max(80, level.owner.x - 240),
-    hp: 1,
-    home: GROUND - 22,
-    chaser: true,
-  });
+  const chaseAt = Math.max((level.spawn || 70) + 980, 1100);
+  if (chaseAt < level.owner.x - 280) {
+    level.enemies.push({
+      kind: "mouse",
+      x: chaseAt,
+      y: GROUND - 22,
+      min: chaseAt - 40,
+      max: Math.max(chaseAt + 80, level.owner.x - 240),
+      hp: 1,
+      home: GROUND - 22,
+      chaser: true,
+    });
+  }
   const secretX = (floors[floors.length - 1] || { x: 400, w: 200 }).x + 80;
   level.fish.push({ x: secretX, y: GROUND - 250, golden: false, phase: 0.4, got: false, sky: true, secret: true });
   level.fishValue += 1;
