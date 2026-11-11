@@ -3153,6 +3153,7 @@ function loop(now) {
         left: held.left,
         right: held.right,
         up: held.up,
+        down: held.down,
         jumpPressed: pressed.jump,
       };
       pressed.jump = false;
@@ -3351,6 +3352,8 @@ function padKeys() {
     ["done", "#fish-done"],
     ["left", "#map-left"],
     ["right", "#map-right"],
+    ["up", "#map-up"],
+    ["down", "#map-down"],
     ["jump", "#map-go"],
   ];
 }
@@ -4527,7 +4530,7 @@ function mapLayoutTest() {
   const report = mapHudReport();
   const cat = report.cat;
   if (!cat || cat.w < 70 || cat.h < 90) throw new Error(`cat too small ${JSON.stringify(cat)}`);
-  const boxes = ["#map-left", "#map-right", "#map-go", "#pause"].map((sel) => {
+  const boxes = ["#map-up", "#map-down", "#map-left", "#map-right", "#map-go", "#pause"].map((sel) => {
     const rect = document.querySelector(sel).getBoundingClientRect();
     return { sel, l: rect.left, t: rect.top, r: rect.right, b: rect.bottom, w: rect.width };
   }).filter((box) => box.w > 8);
@@ -4541,8 +4544,51 @@ function mapLayoutTest() {
     }
   }
   if (cat.cx < report.view.w * 0.32 || cat.cx > report.view.w * 0.74) throw new Error(`cat x ${Math.round(cat.cx)} of ${report.view.w}`);
+  const up = document.querySelector("#map-up").getBoundingClientRect();
+  const down = document.querySelector("#map-down").getBoundingClientRect();
+  const left = document.querySelector("#map-left").getBoundingClientRect();
+  const right = document.querySelector("#map-right").getBoundingClientRect();
+  const cross = up.bottom <= left.top + 8 && down.top >= left.bottom - 8 && left.right <= right.left + 4;
+  if (!cross) throw new Error("map d-pad is not a plus");
   setMapChrome(false);
   return { ok: true, cat };
+}
+
+function mapBranchTest() {
+  const snap = JSON.parse(JSON.stringify(progress));
+  progress.cleared = { living: true, porch: true, yard: true, nap: true };
+  progress.stars = {};
+  progress.map = { world: 0, node: "porch" };
+  progress.skirmish = "held";
+  const tap = (dir) => {
+    const input = { left: false, right: false, up: false, down: false, jumpPressed: false };
+    input[dir] = true;
+    stepMap(progress, input, 1 / 60);
+    input[dir] = false;
+    for (let i = 0; i < 40; i++) stepMap(progress, input, 1 / 60);
+  };
+  tap("down");
+  const fish = progress.map.node === "bowl";
+  tap("up");
+  const back = progress.map.node === "porch";
+  tap("right");
+  tap("up");
+  const treats = progress.map.node === "treats";
+  tap("down");
+  tap("right");
+  tap("up");
+  const shop = progress.map.node === "shop";
+  progress.map.node = "porch";
+  const held = { left: false, right: true, up: false, down: false, jumpPressed: false };
+  for (let i = 0; i < 160; i++) stepMap(progress, held, 1 / 60);
+  const marched = progress.map.node === "neighbor";
+  progress.cleared = snap.cleared || {};
+  progress.stars = snap.stars || {};
+  progress.map = snap.map || { world: 0, node: "living" };
+  progress.skirmish = snap.skirmish;
+  saveProgress(progress);
+  if (!(fish && back && treats && shop && marched)) throw new Error(JSON.stringify({ fish, back, treats, shop, marched }));
+  return { ok: true };
 }
 
 function storyTest() {
@@ -4852,6 +4898,7 @@ window.sunbeam = {
   fishUiTest,
   mapTest,
   mapLayoutTest,
+  mapBranchTest,
   stepTest,
   enemyZoom,
   behaviorCard,

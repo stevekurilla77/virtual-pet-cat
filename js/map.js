@@ -78,18 +78,37 @@ function gateOpen(progress, from, to) {
   return true;
 }
 
-function neighbors(progress, id) {
+function links(progress, id) {
+  const node = findNode(id);
+  const list = [];
+  const add = (other) => {
+    if (other && other !== id && canStand(progress, other) && !list.includes(other)) list.push(other);
+  };
   const index = MAIN.indexOf(id);
-  let prev = index > 0 ? MAIN[index - 1] : null;
-  let next = index >= 0 && index < MAIN.length - 1 ? MAIN[index + 1] : null;
-  if (prev && !gateOpen(progress, prev, id)) prev = null;
-  if (next && !gateOpen(progress, id, next)) next = null;
-  if (index < 0) {
-    const node = findNode(id);
-    prev = node && node.from;
-    next = null;
+  if (index > 0) add(MAIN[index - 1]);
+  if (index >= 0 && index < MAIN.length - 1 && gateOpen(progress, id, MAIN[index + 1])) add(MAIN[index + 1]);
+  add(sideOf(id));
+  if (node && node.from) add(node.from);
+  return list;
+}
+
+function stepToward(progress, id, dir) {
+  const aim = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] }[dir];
+  if (!aim) return null;
+  const [x, y] = spot(id);
+  let best = null;
+  let bestDist = Infinity;
+  for (const other of links(progress, id)) {
+    const [ox, oy] = spot(other);
+    const vx = ox - x;
+    const vy = oy - y;
+    const dist = Math.hypot(vx, vy) || 1;
+    const dot = (vx / dist) * aim[0] + (vy / dist) * aim[1];
+    if (dot < 0.5 || dist >= bestDist) continue;
+    best = other;
+    bestDist = dist;
   }
-  return { prev, next, side: sideOf(id) };
+  return best;
 }
 
 function canStand(progress, id) {
@@ -120,16 +139,14 @@ export function stepMap(progress, input, dt) {
     }
     return null;
   }
-  const here = neighbors(progress, map.node);
   const hop = (id) => {
     if (!id || !canStand(progress, id) || cooldown > 0) return;
     walk = { from: map.node, to: id, t: 0 };
     cooldown = 0.16;
     selected = id;
   };
-  if (input.left) hop(here.prev);
-  else if (input.right) hop(here.next);
-  else if (input.up) hop(here.side);
+  const dir = input.left ? "left" : input.right ? "right" : input.up ? "up" : input.down ? "down" : "";
+  if (dir) hop(stepToward(progress, map.node, dir));
   if (input.jumpPressed) return enterCurrent(progress);
   return null;
 }
@@ -140,8 +157,7 @@ export function chooseNode(progress, id) {
   const map = ensureMap(progress);
   if (!canStand(progress, id)) return { type: "locked", id };
   if (id === map.node || (walk && walk.to === id)) return null;
-  const here = neighbors(progress, map.node);
-  if (id === here.next || id === here.prev || id === here.side) {
+  if (links(progress, map.node).includes(id)) {
     walk = { from: map.node, to: id, t: 0 };
     cooldown = 0.16;
   }

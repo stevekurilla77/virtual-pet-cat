@@ -184,8 +184,12 @@
       <button class="padbtn fish-reel" id="reel" type="button">Reel</button>
     </div>
     <div id="map-controls" hidden>
-      <button class="padbtn map-arrow" id="map-left" type="button" aria-label="Previous stop">◀</button>
-      <button class="padbtn map-arrow" id="map-right" type="button" aria-label="Next stop">▶</button>
+      <div class="map-dpad" id="map-dpad">
+        <button class="padbtn map-pad" id="map-up" type="button" aria-label="Up the path">▲</button>
+        <button class="padbtn map-pad" id="map-left" type="button" aria-label="Back along the path">◀</button>
+        <button class="padbtn map-pad" id="map-right" type="button" aria-label="Ahead on the path">▶</button>
+        <button class="padbtn map-pad" id="map-down" type="button" aria-label="Down the path">▼</button>
+      </div>
       <button class="padbtn map-go" id="map-go" type="button">Go</button>
     </div>
     <div id="node-card" hidden>
