@@ -1,11 +1,34 @@
-// Mario 3 style overworld. The cat walks the paths; Play opens the node.
+// One scrolling illustrated overworld. Static art is baked; the cat, weather, and nodes animate.
 
 import { WORLDS } from "./campaign.js";
 import { paintCat } from "./kitten.js";
 
+export const MAP_W = 4700;
+export const MAP_H = 700;
+
+const SPOTS = {
+  living: [240, 400], porch: [460, 445], bowl: [460, 560], yard: [680, 445],
+  treats: [680, 300], nap: [900, 445], shop: [900, 290], neighbor: [1100, 400],
+  sidewalk: [1420, 460], alley: [1640, 430], fish2: [1640, 575], rooftops: [1880, 330],
+  treats2: [1880, 530], treetop: [2100, 360], shop2: [2100, 230], dogpark: [2320, 460],
+  waiting: [2680, 440], exam: [2900, 400], treats3: [2900, 575], vents: [3100, 340],
+  shop3: [3100, 545], closet: [3280, 440], frontdesk: [3480, 460],
+  rainy: [3820, 470], drains: [4020, 530], fish4: [4020, 330], chase: [4220, 350],
+  shop4: [4220, 540], fencerun: [4400, 450], homecoming: [4580, 380],
+};
+
+const MAIN = ["living", "porch", "yard", "nap", "neighbor", "sidewalk", "alley", "rooftops", "treetop", "dogpark", "waiting", "exam", "vents", "closet", "frontdesk", "rainy", "drains", "chase", "fencerun", "homecoming"];
+const GATES = { neighbor: 1, dogpark: 2, frontdesk: 3 };
+
 let walk = null;
-let wander = { node: 0, t: 0 };
 let cooldown = 0;
+let wander = 0;
+let camX = 0;
+let camY = 80;
+let baked = null;
+let selected = null;
+let lastCat = null;
+let lastView = { w: 1, h: 1 };
 
 export function cleared(progress, id) {
   if (!id) return true;
@@ -20,74 +43,118 @@ export function worldOpen(progress, index) {
   return cleared(progress, world.need);
 }
 
-function pathIndex(world, id) {
-  return world.path.indexOf(id);
+function worldIndexOf(id) {
+  return WORLDS.findIndex((world) => world.nodes[id]);
+}
+
+function findNode(id) {
+  for (const world of WORLDS) {
+    if (world.nodes[id]) return { ...world.nodes[id], id, world: WORLDS.indexOf(world) };
+  }
+  return null;
 }
 
 export function ensureMap(progress) {
   progress.map = progress.map || { world: 0, node: "living" };
-  const world = WORLDS[progress.map.world] || WORLDS[0];
-  if (!world.nodes[progress.map.node]) progress.map.node = world.path[0];
+  if (!findNode(progress.map.node)) progress.map.node = "living";
+  progress.map.world = Math.max(0, worldIndexOf(progress.map.node));
   return progress.map;
 }
 
-function neighbors(world, id) {
-  const along = pathIndex(world, id);
-  const prev = along > 0 ? world.path[along - 1] : null;
-  const next = along >= 0 && along < world.path.length - 1 ? world.path[along + 1] : null;
-  const side = Object.keys(world.nodes).find((key) => world.nodes[key].from === id) || null;
-  return { prev, next, side };
+function sideOf(id) {
+  for (const world of WORLDS) {
+    for (const [key, node] of Object.entries(world.nodes)) {
+      if (node.from === id) return key;
+    }
+  }
+  return null;
 }
 
-function canStand(progress, world, id) {
-  if (!id || !world.nodes[id]) return false;
-  const node = world.nodes[id];
+function gateOpen(progress, from, to) {
+  const gate = GATES[from];
+  if (gate && to === MAIN[MAIN.indexOf(from) + 1]) return worldOpen(progress, gate);
+  const back = GATES[to];
+  if (back && from === MAIN[MAIN.indexOf(to) + 1]) return worldOpen(progress, back);
+  return true;
+}
+
+function neighbors(progress, id) {
+  const index = MAIN.indexOf(id);
+  let prev = index > 0 ? MAIN[index - 1] : null;
+  let next = index >= 0 && index < MAIN.length - 1 ? MAIN[index + 1] : null;
+  if (prev && !gateOpen(progress, prev, id)) prev = null;
+  if (next && !gateOpen(progress, id, next)) next = null;
+  if (index < 0) {
+    const node = findNode(id);
+    prev = node && node.from;
+    next = null;
+  }
+  return { prev, next, side: sideOf(id) };
+}
+
+function canStand(progress, id) {
+  const node = findNode(id);
+  if (!node) return false;
+  if (!worldOpen(progress, node.world)) return false;
   if (node.from) return cleared(progress, node.from);
-  const index = pathIndex(world, id);
+  const index = MAIN.indexOf(id);
   if (index <= 0) return true;
-  return cleared(progress, world.path[index - 1]);
+  return cleared(progress, MAIN[index - 1]);
+}
+
+function spot(id) {
+  return SPOTS[id] || [200, 440];
 }
 
 export function stepMap(progress, input, dt) {
   const map = ensureMap(progress);
   cooldown = Math.max(0, cooldown - dt);
+  wander += dt * 0.12;
   if (walk) {
-    walk.t += dt / 0.35;
+    walk.t += dt / 0.45;
     if (walk.t >= 1) {
       map.node = walk.to;
+      map.world = Math.max(0, worldIndexOf(map.node));
       walk = null;
+      selected = map.node;
     }
     return null;
   }
-  const world = WORLDS[map.world];
-  const here = neighbors(world, map.node);
+  const here = neighbors(progress, map.node);
   const hop = (id) => {
-    if (!id || !canStand(progress, world, id) || cooldown > 0) return;
+    if (!id || !canStand(progress, id) || cooldown > 0) return;
     walk = { from: map.node, to: id, t: 0 };
-    cooldown = 0.18;
+    cooldown = 0.16;
+    selected = id;
   };
   if (input.left) hop(here.prev);
   else if (input.right) hop(here.next);
   else if (input.up) hop(here.side);
-  wander.t += dt * 0.15;
-  const route = world.path;
-  wander.node = Math.floor(wander.t) % route.length;
   if (input.jumpPressed) return enterCurrent(progress);
-  if (input.world != null && worldOpen(progress, input.world)) {
-    map.world = input.world;
-    map.node = WORLDS[input.world].path[0];
-    walk = null;
+  return null;
+}
+
+export function chooseNode(progress, id) {
+  if (!id || !findNode(id)) return null;
+  selected = id;
+  const map = ensureMap(progress);
+  if (!canStand(progress, id)) return { type: "locked", id };
+  if (id === map.node || (walk && walk.to === id)) return null;
+  const here = neighbors(progress, map.node);
+  if (id === here.next || id === here.prev || id === here.side) {
+    walk = { from: map.node, to: id, t: 0 };
+    cooldown = 0.16;
   }
   return null;
 }
 
 export function enterCurrent(progress) {
   const map = ensureMap(progress);
-  const world = WORLDS[map.world];
-  const node = world.nodes[map.node];
-  if (!node || !canStand(progress, world, map.node)) return { type: "locked" };
-  const foe = wander.t > 1.2 && world.path[wander.node % world.path.length] === map.node && node.kind === "level";
-  if (foe && progress.skirmish !== map.node) {
+  const node = findNode(map.node);
+  if (!node || !canStand(progress, map.node)) return { type: "locked" };
+  const routeIndex = Math.floor(wander) % MAIN.length;
+  const foeHere = MAIN[routeIndex] === map.node && node.kind === "level" && wander > 1.2;
+  if (foeHere && progress.skirmish !== map.node) {
     progress.skirmish = map.node;
     return { type: "level", id: "skirmish", node: map.node };
   }
@@ -98,124 +165,519 @@ export function enterCurrent(progress) {
   return { type: "locked" };
 }
 
-export function hitWorld(x, y, w, h) {
-  for (let i = 0; i < WORLDS.length; i++) {
-    const cx = 230 + i * ((w - 420) / 3);
-    const cy = 108;
-    if (Math.hypot(x - cx, y - cy) < 28) return i;
-  }
-  return null;
+export function selectedNode() {
+  return selected;
 }
 
-function point(world, id, w, h) {
-  const node = world.nodes[id];
-  return [220 + node.x * (w - 380), 132 + node.y * (h - 210)];
-}
-
-export function drawMap(ctx, width, height, dpr, progress, cat, time) {
+function catPoint(progress) {
   const map = ensureMap(progress);
-  const world = WORLDS[map.world];
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const sky = ctx.createLinearGradient(0, 0, 0, height);
-  sky.addColorStop(0, world.sky[0]);
-  sky.addColorStop(1, world.sky[1]);
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = world.ground;
-  ctx.beginPath();
-  ctx.ellipse(width * 0.5, height * 0.72, width * 0.62, height * 0.28, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = world.path;
-  ctx.lineWidth = 8;
-  ctx.lineCap = "round";
-  const link = (a, b) => {
-    const [x1, y1] = point(world, a, width, height);
-    const [x2, y2] = point(world, b, width, height);
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-  };
-  for (let i = 1; i < world.path.length; i++) link(world.path[i - 1], world.path[i]);
-  for (const [id, node] of Object.entries(world.nodes)) {
-    if (node.from) link(node.from, id);
-  }
-  for (const [id, node] of Object.entries(world.nodes)) {
-    const [x, y] = point(world, id, width, height);
-    const open = canStand(progress, world, id);
-    const done = cleared(progress, node.level || id);
-    ctx.fillStyle = open ? "#fff8f2" : "rgba(255,248,242,0.35)";
-    ctx.beginPath();
-    ctx.arc(x, y, node.kind === "boss" ? 22 : 16, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = node.kind === "boss" ? "#c45a3a" : world.ink;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.fillStyle = world.ink;
-    ctx.font = "700 12px 'Avenir Next', 'Segoe UI', sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(done ? "★" : node.label, x, y + 4);
-  }
-  const stand = walk ? walk.from : map.node;
-  const dest = walk ? walk.to : map.node;
-  const [ax, ay] = point(world, stand, width, height);
-  const [bx, by] = point(world, dest, width, height);
+  const from = spot(walk ? walk.from : map.node);
+  const to = spot(walk ? walk.to : map.node);
   const t = walk ? Math.min(1, walk.t) : 0;
-  const cx = ax + (bx - ax) * t;
-  const cy = ay + (by - ay) * t;
-  if (cat) {
-    cat.x = 0;
-    cat.groundY = 0;
-    cat.scale = 0.7;
-    cat.facing = bx >= ax ? 1 : -1;
-    ctx.save();
-    ctx.translate(cx, cy - 28);
-    paintCat(ctx, cat, time);
-    ctx.restore();
+  const ease = t * t * (3 - 2 * t);
+  return [from[0] + (to[0] - from[0]) * ease, from[1] + (to[1] - from[1]) * ease];
+}
+
+function frameCamera(x, y, viewW, viewH, moving) {
+  const focusX = viewW * 0.52;
+  const focusY = viewH * 0.42;
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  const nextX = clamp(x - focusX, -viewW * 0.25, MAP_W - viewW * 0.5);
+  const nextY = clamp(y - focusY, -80, Math.max(-80, MAP_H - viewH * 0.62));
+  if (moving) {
+    camX += (nextX - camX) * 0.18;
+    camY += (nextY - camY) * 0.18;
+  } else {
+    camX = nextX;
+    camY = nextY;
   }
-  const foeId = world.path[wander.node % world.path.length];
-  const [fx, fy] = point(world, foeId, width, height);
-  ctx.fillStyle = "#8d6844";
-  ctx.beginPath();
-  ctx.ellipse(fx + 18, fy - 10, 8, 5, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = world.ink;
-  ctx.font = "800 16px 'Avenir Next', 'Segoe UI', sans-serif";
-  ctx.textAlign = "left";
-  ctx.fillText(`${world.name} · ${world.mission}`, 220, height - 16);
-  WORLDS.forEach((item, index) => {
-    const mx = 230 + index * ((width - 420) / 3);
-    const open = worldOpen(progress, index);
-    ctx.fillStyle = index === map.world ? "#fff8f2" : open ? "rgba(255,248,242,0.7)" : "rgba(40,30,24,0.25)";
-    ctx.beginPath();
-    ctx.arc(mx, 108, 18, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = open ? world.ink : "rgba(255,248,242,0.8)";
-    ctx.font = "800 14px 'Avenir Next', 'Segoe UI', sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(String(index + 1), mx, 113);
-  });
-  const panel = [
-    progress.foundOwner ? "Owner found" : "Owner missing",
-    progress.friend ? "Friend safe" : "Friend lost",
-    progress.escaped ? "Out of the vet" : "Vet ahead",
-    progress.home ? "Home" : "Rain between you",
-  ];
-  ctx.fillStyle = "rgba(255,248,242,0.82)";
-  round(ctx, width - 168, 64, 152, 78, 14);
-  ctx.fill();
-  ctx.fillStyle = "#3a2a22";
-  ctx.font = "600 11px 'Avenir Next', 'Segoe UI', sans-serif";
-  ctx.textAlign = "left";
-  panel.forEach((line, i) => ctx.fillText(line, width - 156, 84 + i * 16));
+}
+
+export function pickMap(px, py) {
+  let best = null;
+  let bestD = 36;
+  for (const id of Object.keys(SPOTS)) {
+    const [x, y] = spot(id);
+    const sx = x - camX;
+    const sy = y - camY;
+    const dist = Math.hypot(px - sx, py - sy);
+    if (dist < bestD) {
+      best = id;
+      bestD = dist;
+    }
+  }
+  return best;
+}
+
+export function mapHudReport() {
+  return { cat: lastCat, view: lastView };
 }
 
 function round(g, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
   g.beginPath();
-  g.moveTo(x + r, y);
-  g.arcTo(x + w, y, x + w, y + h, r);
-  g.arcTo(x + w, y + h, x, y + h, r);
-  g.arcTo(x, y + h, x, y, r);
-  g.arcTo(x, y, x + w, y, r);
+  g.moveTo(x + rr, y);
+  g.arcTo(x + w, y, x + w, y + h, rr);
+  g.arcTo(x + w, y + h, x, y + h, rr);
+  g.arcTo(x, y + h, x, y, rr);
+  g.arcTo(x, y, x + w, y, rr);
   g.closePath();
+}
+
+function tree(g, x, y, r, leaf, trunk) {
+  g.fillStyle = trunk;
+  g.fillRect(x - 6, y - r, 12, r + 8);
+  g.fillStyle = leaf;
+  g.beginPath();
+  g.arc(x - r * 0.3, y - r * 1.1, r * 0.7, 0, Math.PI * 2);
+  g.arc(x + r * 0.35, y - r * 1.2, r * 0.75, 0, Math.PI * 2);
+  g.arc(x, y - r * 0.7, r * 0.6, 0, Math.PI * 2);
+  g.fill();
+}
+
+function house(g, x, y, w, h, wall, roof, door) {
+  g.fillStyle = wall;
+  round(g, x, y - h, w, h, 6);
+  g.fill();
+  g.fillStyle = roof;
+  g.beginPath();
+  g.moveTo(x - 10, y - h + 8);
+  g.lineTo(x + w / 2, y - h - 28);
+  g.lineTo(x + w + 10, y - h + 8);
+  g.fill();
+  g.fillStyle = "#bfe4f5";
+  g.fillRect(x + 12, y - h + 22, 22, 18);
+  g.fillRect(x + w - 36, y - h + 22, 22, 18);
+  g.fillStyle = door;
+  round(g, x + w / 2 - 10, y - 36, 20, 36, 4);
+  g.fill();
+}
+
+function ensureBake() {
+  if (baked) return baked;
+  const mid = document.createElement("canvas");
+  mid.width = MAP_W;
+  mid.height = MAP_H;
+  const g = mid.getContext("2d");
+  const sky = g.createLinearGradient(0, 0, MAP_W, 0);
+  sky.addColorStop(0, "#f6d7a8");
+  sky.addColorStop(0.22, "#c6ecff");
+  sky.addColorStop(0.48, "#d5e7c4");
+  sky.addColorStop(0.68, "#e7eef3");
+  sky.addColorStop(0.82, "#6a4a68");
+  sky.addColorStop(1, "#241c38");
+  g.fillStyle = sky;
+  g.fillRect(0, 0, MAP_W, MAP_H);
+  g.fillStyle = "rgba(255,255,255,0.35)";
+  g.beginPath();
+  g.ellipse(180, 90, 70, 22, 0, 0, Math.PI * 2);
+  g.ellipse(520, 70, 90, 24, 0, 0, Math.PI * 2);
+  g.ellipse(1500, 80, 80, 20, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#e7c49a";
+  g.fillRect(0, 500, 1180, 200);
+  g.fillStyle = "#b7dd8a";
+  g.fillRect(1180, 500, 1240, 200);
+  g.fillStyle = "#d5dde6";
+  g.fillRect(2420, 500, 1100, 200);
+  g.fillStyle = "#2c3344";
+  g.fillRect(3520, 500, 1180, 200);
+  g.fillStyle = "#c9843a";
+  round(g, 1180, 470, 80, 16, 8);
+  g.fill();
+  g.fillStyle = "#8d6a45";
+  g.fillRect(2360, 430, 70, 14);
+  g.fillRect(2375, 390, 8, 50);
+  g.fillRect(2405, 390, 8, 50);
+  g.fillStyle = "#9aa7b4";
+  g.fillRect(3520, 520, 90, 10);
+
+  // World 1 cutaway house
+  g.fillStyle = "#fff6ee";
+  round(g, 80, 210, 340, 250, 16);
+  g.fill();
+  g.fillStyle = "#bfe4f5";
+  round(g, 100, 230, 90, 70, 8);
+  g.fill();
+  g.fillStyle = "#f2c14b";
+  g.fillRect(108, 248, 8, 40);
+  g.fillStyle = "#d23d55";
+  round(g, 210, 360, 120, 50, 12);
+  g.fill();
+  g.fillStyle = "#e4578b";
+  g.beginPath();
+  g.ellipse(270, 430, 70, 18, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#c4925a";
+  g.fillRect(360, 300, 16, 140);
+  g.fillStyle = "#7d5cff";
+  g.beginPath();
+  g.ellipse(368, 290, 28, 10, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#5c4638";
+  g.font = "700 18px 'Avenir Next', 'Segoe UI', sans-serif";
+  g.fillText("Home Sweet Home", 100, 200);
+
+  house(g, 430, 500, 110, 90, "#f4efe4", "#c45a4a", "#8d5a32");
+  g.fillStyle = "#6eae84";
+  g.beginPath();
+  g.ellipse(560, 470, 16, 10, 0, 0, Math.PI * 2);
+  g.ellipse(590, 478, 12, 8, 0, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = "#f7f1ea";
+  g.lineWidth = 4;
+  for (let x = 640; x < 860; x += 18) {
+    g.beginPath();
+    g.moveTo(x, 470);
+    g.lineTo(x, 430);
+    g.stroke();
+  }
+  g.beginPath();
+  g.moveTo(640, 430);
+  g.lineTo(860, 430);
+  g.stroke();
+  g.fillStyle = "#e07a8c";
+  for (let i = 0; i < 5; i++) {
+    g.beginPath();
+    g.arc(660 + i * 28, 490, 5, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.fillStyle = "#c9843a";
+  g.fillRect(820, 430, 10, 50);
+  g.fillStyle = "#3a6ea5";
+  g.fillRect(800, 418, 36, 22);
+  house(g, 980, 500, 150, 120, "#f7e2c4", "#a85a48", "#6b4a32");
+  g.fillStyle = "#e7eef2";
+  g.beginPath();
+  g.ellipse(1120, 455, 14, 8, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "rgba(90,90,90,0.35)";
+  g.beginPath();
+  g.arc(1040, 340, 8, 0, Math.PI * 2);
+  g.fill();
+
+  // Neighborhood
+  g.fillStyle = "#d7d2cc";
+  g.fillRect(1240, 500, 1000, 28);
+  g.fillStyle = "#f4f1ea";
+  for (let x = 1260; x < 2200; x += 36) g.fillRect(x, 512, 16, 6);
+  [[1280, "#f2c14b", "#c45a4a"], [1460, "#9fd0e8", "#5c4638"], [1640, "#f0a3b8", "#6e4a5a"], [1820, "#c9e6a8", "#3f6b4a"]].forEach(([x, wall, roof]) => {
+    house(g, x, 500, 130, 110, wall, roof, "#6b4a32");
+    g.fillStyle = "rgba(255, 214, 120, 0.85)";
+    g.fillRect(x + 16, 500 - 110 + 26, 16, 12);
+  });
+  g.fillStyle = "#6f8f72";
+  g.fillRect(1560, 460, 22, 36);
+  g.fillRect(1590, 468, 18, 28);
+  g.fillStyle = "#dfe8df";
+  g.fillRect(1556, 454, 30, 8);
+  tree(g, 1760, 500, 46, "#3f9a55", "#8d5a32");
+  tree(g, 1980, 500, 54, "#2f7a44", "#6b4428");
+  tree(g, 2140, 490, 60, "#245c34", "#5a3a22");
+  g.fillStyle = "#7ec8e8";
+  g.beginPath();
+  g.ellipse(2060, 530, 70, 18, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#c4925a";
+  g.fillRect(2000, 512, 120, 8);
+  g.fillStyle = "#e7a0b0";
+  g.beginPath();
+  g.arc(2168, 500, 7, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = "#f4efe4";
+  g.lineWidth = 3;
+  g.strokeRect(2240, 430, 150, 70);
+  g.fillStyle = "#5c4638";
+  g.font = "700 16px 'Avenir Next', 'Segoe UI', sans-serif";
+  g.fillText("The Neighborhood", 1300, 250);
+  g.fillText("Woods", 2060, 250);
+
+  // Vet
+  g.fillStyle = "#f7fbfc";
+  round(g, 2520, 250, 900, 250, 12);
+  g.fill();
+  g.fillStyle = "#d5e4ea";
+  for (let y = 270; y < 480; y += 22) g.fillRect(2540, y, 860, 10);
+  g.fillStyle = "#7ec8c3";
+  round(g, 2580, 280, 220, 36, 8);
+  g.fill();
+  g.fillStyle = "#fff";
+  g.font = "800 16px 'Avenir Next', 'Segoe UI', sans-serif";
+  g.fillText("Vet  +", 2640, 304);
+  g.fillStyle = "#e7eef2";
+  g.fillRect(2860, 320, 80, 60);
+  g.fillRect(3080, 300, 50, 40);
+  g.fillStyle = "#c9d6e0";
+  round(g, 3200, 360, 70, 50, 6);
+  g.fill();
+  g.fillStyle = "#8fb8d6";
+  round(g, 3360, 430, 90, 50, 8);
+  g.fill();
+  g.fillStyle = "#5c4638";
+  g.fillText("Escape from the Vet", 2580, 230);
+
+  // Night home
+  g.fillStyle = "rgba(255,255,255,0.08)";
+  for (let i = 0; i < 8; i++) g.fillRect(3600 + i * 120, 80 + (i % 3) * 20, 2, 2);
+  house(g, 3680, 500, 120, 100, "#3d4a58", "#241c38", "#1a1e28");
+  g.fillStyle = "#f2c14b";
+  g.fillRect(3600, 360, 8, 140);
+  g.beginPath();
+  g.arc(3604, 350, 16, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#4a5568";
+  g.fillRect(4000, 490, 80, 16);
+  g.fillStyle = "#8d5a32";
+  for (let x = 4180; x < 4460; x += 16) g.fillRect(x, 430, 4, 50);
+  g.fillStyle = "#fff1c9";
+  round(g, 4500, 340, 70, 50, 8);
+  g.fill();
+  g.fillStyle = "#f7c6d8";
+  g.beginPath();
+  g.arc(4568, 390, 8, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#f6efe6";
+  g.fillText("Back into the House", 3660, 230);
+
+  // Cobbled path
+  g.strokeStyle = "rgba(90, 60, 40, 0.45)";
+  g.lineWidth = 10;
+  g.lineCap = "round";
+  g.setLineDash([2, 14]);
+  g.beginPath();
+  MAIN.forEach((id, index) => {
+    const [x, y] = spot(id);
+    if (index === 0) g.moveTo(x, y);
+    else g.lineTo(x, y);
+  });
+  g.stroke();
+  g.setLineDash([]);
+  for (const world of WORLDS) {
+    for (const [id, node] of Object.entries(world.nodes)) {
+      if (!node.from) continue;
+      const [x, y] = spot(id);
+      const [px, py] = spot(node.from);
+      g.strokeStyle = "rgba(90, 60, 40, 0.35)";
+      g.lineWidth = 6;
+      g.beginPath();
+      g.moveTo(px, py);
+      g.lineTo(x, y);
+      g.stroke();
+    }
+  }
+  baked = mid;
+  return baked;
+}
+
+function drawNode(g, progress, id, time) {
+  const node = findNode(id);
+  if (!node) return;
+  const [x, y] = spot(id);
+  const open = canStand(progress, id);
+  const done = cleared(progress, node.level || id);
+  const here = ensureMap(progress).node === id;
+  const boss = node.kind === "boss";
+  g.save();
+  g.translate(x, y);
+  if (!worldOpen(progress, node.world)) g.globalAlpha = 0.45;
+  if (here) {
+    g.strokeStyle = `rgba(242, 193, 75, ${0.45 + Math.sin(time * 5) * 0.35})`;
+    g.lineWidth = 3;
+    g.beginPath();
+    g.arc(0, 0, 30 + Math.sin(time * 5) * 3, 0, Math.PI * 2);
+    g.stroke();
+  }
+  g.fillStyle = open ? "#fffaf4" : "rgba(255,248,242,0.4)";
+  g.beginPath();
+  g.arc(0, 0, boss ? 24 : 18, 0, Math.PI * 2);
+  g.fill();
+  g.lineWidth = 3;
+  g.strokeStyle = boss ? "#c45a3a" : "#5c4638";
+  g.stroke();
+  if (node.kind === "fish") {
+    g.fillStyle = "#3aa0d8";
+    g.beginPath();
+    g.ellipse(0, 1, 8, 5, 0, 0, Math.PI * 2);
+    g.fill();
+  } else if (node.kind === "shop") {
+    g.fillStyle = "#e07a8c";
+    g.fillRect(-10, -8, 20, 6);
+    g.fillStyle = "#f7f1ea";
+    g.fillRect(-8, -2, 16, 8);
+  } else if (node.kind === "bonus") {
+    g.fillStyle = "#f2c14b";
+    g.beginPath();
+    g.ellipse(0, 2, 8, 5, 0, 0, Math.PI * 2);
+    g.fill();
+  } else if (node.kind === "check") {
+    g.fillStyle = "#f7c6d8";
+    g.beginPath();
+    g.ellipse(0, 2, 9, 5, 0, 0, Math.PI * 2);
+    g.fill();
+  } else if (boss) {
+    g.fillStyle = id === "dogpark" ? "#d7a15a" : id === "frontdesk" ? "#7ec8c3" : id === "homecoming" ? "#e23b3b" : "#c9843a";
+    g.beginPath();
+    g.arc(0, 0, 8, 0, Math.PI * 2);
+    g.fill();
+  } else {
+    g.fillStyle = "#5c4638";
+    g.font = "800 12px 'Avenir Next', 'Segoe UI', sans-serif";
+    g.textAlign = "center";
+    g.fillText(done ? "" : node.label, 0, 4);
+  }
+  if (done) {
+    g.fillStyle = "#e07a3d";
+    g.beginPath();
+    g.ellipse(-2, 2, 5, 4, 0, 0, Math.PI * 2);
+    g.fill();
+    g.beginPath();
+    g.arc(-6, 0, 2, 0, Math.PI * 2);
+    g.arc(2, -1, 2, 0, Math.PI * 2);
+    g.fill();
+  }
+  const stars = node.level && progress.stars ? progress.stars[node.level] || 0 : 0;
+  if (stars) {
+    g.fillStyle = "#f2c14b";
+    g.font = "700 10px 'Avenir Next', 'Segoe UI', sans-serif";
+    g.textAlign = "center";
+    g.fillText("★".repeat(stars), 0, 30);
+  }
+  g.restore();
+}
+
+export function drawMap(ctx, width, height, dpr, progress, cat, time) {
+  ensureMap(progress);
+  lastView = { w: width, h: height };
+  const [cx, cy] = catPoint(progress);
+  frameCamera(cx, cy, width, height, Boolean(walk));
+  const art = ensureBake();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.save();
+  ctx.translate(-Math.round(camX), -Math.round(camY));
+  ctx.drawImage(art, 0, 0);
+  const sway = Math.sin(time * 1.4) * 3;
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  ctx.beginPath();
+  ctx.ellipse(300 + (time * 18) % 900, 80 + sway, 64, 16, 0, 0, Math.PI * 2);
+  ctx.ellipse(1600 + (time * 14) % 700, 64, 80, 18, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(80,80,80,0.25)";
+  ctx.beginPath();
+  ctx.arc(1048, 330 + Math.sin(time * 2) * -10, 7, 0, Math.PI * 2);
+  ctx.arc(1040, 318 + Math.sin(time * 2) * -16, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f2c14b";
+  ctx.beginPath();
+  ctx.arc(3604, 348 + Math.sin(time * 3) * 2, 10, 0, Math.PI * 2);
+  ctx.fill();
+  for (let i = 0; i < 5; i++) {
+    const bx = 1900 + Math.sin(time * 1.3 + i) * 40 + i * 18;
+    const by = 300 + Math.cos(time * 1.7 + i) * 16;
+    ctx.fillStyle = i % 2 ? "#f2c14b" : "#e07a8c";
+    ctx.beginPath();
+    ctx.ellipse(bx, by, 3, 2, time + i, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "#f7f1ea";
+  ctx.beginPath();
+  ctx.ellipse(2030 + Math.sin(time) * 10, 528, 8, 4, 0, 0, Math.PI * 2);
+  ctx.ellipse(2075 + Math.cos(time * 0.8) * 8, 534, 7, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  if (Math.sin(time * 0.7) > 0.92) {
+    ctx.strokeStyle = "rgba(255,255,255,0.7)";
+    ctx.beginPath();
+    ctx.moveTo(4000, 40);
+    ctx.lineTo(3920, 180);
+    ctx.stroke();
+  }
+  for (let i = 0; i < 40; i++) {
+    const rx = 3600 + ((i * 97 + time * 80) % 1000);
+    const ry = 80 + ((i * 53) % 420);
+    ctx.fillStyle = "rgba(190, 210, 230, 0.45)";
+    ctx.fillRect(rx, ry, 1.5, 8);
+  }
+  for (const world of WORLDS) {
+    if (worldOpen(progress, WORLDS.indexOf(world))) continue;
+    const ids = Object.keys(world.nodes);
+    const xs = ids.map((id) => spot(id)[0]);
+    const min = Math.min(...xs) - 80;
+    const max = Math.max(...xs) + 80;
+    ctx.fillStyle = "rgba(40, 36, 48, 0.38)";
+    ctx.fillRect(min, 160, max - min, 420);
+    ctx.fillStyle = "#fff8f2";
+    ctx.font = "700 16px 'Avenir Next', 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Locked", (min + max) / 2, 250);
+  }
+  for (const id of Object.keys(SPOTS)) drawNode(ctx, progress, id, time);
+  const routeIndex = Math.floor(wander * 2) % MAIN.length;
+  const mouseA = spot(MAIN[routeIndex]);
+  const mouseB = spot(MAIN[(routeIndex + 1) % MAIN.length]);
+  const mt = (wander * 2) % 1;
+  const mx = mouseA[0] + (mouseB[0] - mouseA[0]) * mt;
+  const my = mouseA[1] + (mouseB[1] - mouseA[1]) * mt;
+  ctx.save();
+  ctx.translate(mx, my - 8);
+  ctx.fillStyle = "rgba(60,40,20,0.25)";
+  ctx.beginPath();
+  ctx.ellipse(0, 10, 10, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#c4a484";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 11, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f4c7cf";
+  ctx.beginPath();
+  ctx.arc(-4, -6, 4, 0, Math.PI * 2);
+  ctx.arc(4, -6, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#a88870";
+  ctx.beginPath();
+  ctx.moveTo(-8, 2);
+  ctx.quadraticCurveTo(-16, 8 + Math.sin(time * 8) * 3, -6, 8);
+  ctx.stroke();
+  ctx.restore();
+
+  const bob = Math.sin(time * (walk ? 10 : 3)) * (walk ? 4 : 2);
+  ctx.save();
+  ctx.translate(cx, cy + bob);
+  ctx.fillStyle = "rgba(60, 40, 20, 0.28)";
+  ctx.beginPath();
+  ctx.ellipse(0, 6, 28, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  if (cat) {
+    cat.x = 0;
+    cat.groundY = 0;
+    cat.scale = 2.05;
+    cat.facing = !walk || spot(walk.to)[0] >= spot(walk.from)[0] ? 1 : -1;
+    cat.tailAmp = 14;
+    cat.tailSpeed = walk ? 7 : 2.4;
+    cat.hop = walk ? Math.abs(Math.sin(time * 10)) : 0;
+    paintCat(ctx, cat, time);
+  }
+  ctx.restore();
+  const screenX = cx - camX;
+  const screenY = cy - camY + bob;
+  lastCat = { x: screenX - 46, y: screenY - 108, w: 96, h: 116, cx: screenX, cy: screenY };
+  ctx.restore();
+
+  ctx.fillStyle = "rgba(255,248,242,0.9)";
+  round(ctx, 12, 10, Math.min(360, width * 0.46), 54, 16);
+  ctx.fill();
+  const world = WORLDS[progress.map.world] || WORLDS[0];
+  ctx.fillStyle = "#3a2a22";
+  ctx.font = "800 16px 'Avenir Next', 'Segoe UI', sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText(world.name, 26, 32);
+  ctx.font = "600 12px 'Avenir Next', 'Segoe UI', sans-serif";
+  const bits = [
+    progress.foundOwner ? "Owner found" : "Owner missing",
+    progress.friend ? "Friend safe" : "Friend lost",
+    progress.escaped ? "Out of the vet" : "Vet ahead",
+    progress.home ? "Home" : "Rain ahead",
+  ];
+  ctx.fillText(bits.join("  ·  "), 26, 52);
+  ctx.font = "700 13px 'Avenir Next', 'Segoe UI', sans-serif";
+  ctx.fillText(`🐟 ${progress.fishBank || 0}`, width - 150, 32);
 }

@@ -5,7 +5,7 @@ import { PlayAudio } from "./play-audio.js";
 import { bakeScene, drawLady, drawMotion } from "./scenery.js";
 import { applyClimb, dressLevel, drawBird, drawCans, drawClimbs, drawHazards, nearClimb, nearest, updateCans, updateHazards, birdSheet } from "./hazards.js";
 import { EXTRA_LEVELS, WORLDS, worldClues } from "./campaign.js";
-import { cleared, drawMap, ensureMap, enterCurrent, hitWorld, stepMap } from "./map.js";
+import { chooseNode, drawMap, ensureMap, enterCurrent, mapHudReport, pickMap, selectedNode, stepMap } from "./map.js";
 
 const KEY = "sunbeam-play";
 const GROUND = 470;
@@ -2868,16 +2868,40 @@ function openMap() {
   ensureMap(progress);
   const world = WORLDS[progress.map.world] || WORLDS[0];
   audio.playMusic(world.tune);
-  const jump = document.querySelector("#jump");
-  if (jump) jump.textContent = "Play";
-  paintMapChrome();
+  setMapChrome(true);
+  const card = document.querySelector("#node-card");
+  if (card) card.hidden = true;
 }
 
-function paintMapChrome() {
-  const world = WORLDS[progress.map.world] || WORLDS[0];
-  levelName.textContent = world.name;
-  fishCount.textContent = String(progress.fishBank || 0);
-  hearts.textContent = "♥".repeat(progress.easy || progress.extraHeart ? 4 : 3);
+function setMapChrome(onMap) {
+  const dpad = document.querySelector("#dpad");
+  const playButtons = document.querySelector("#play-buttons");
+  const mapControls = document.querySelector("#map-controls");
+  if (dpad) dpad.hidden = onMap;
+  if (playButtons) playButtons.hidden = onMap;
+  if (mapControls) mapControls.hidden = !onMap;
+  for (const id of ["level-name", "fish-hud", "goal-tracker", "hearts", "progress"]) {
+    const el = document.querySelector(`#${id}`);
+    if (el) el.hidden = onMap;
+  }
+  const jump = document.querySelector("#jump");
+  if (jump && !onMap) jump.textContent = "Jump";
+}
+
+function showNodeCard(id) {
+  const card = document.querySelector("#node-card");
+  if (!card) return;
+  const level = LEVELS.find((item) => item.id === id);
+  const title = document.querySelector("#node-title");
+  const meta = document.querySelector("#node-meta");
+  const button = document.querySelector("#node-play");
+  const stars = level && progress.stars ? progress.stars[level.id] || 0 : 0;
+  const fish = level && progress.bestFish ? progress.bestFish[level.id] : null;
+  if (title) title.textContent = level ? level.name : id;
+  if (meta) meta.textContent = `${stars ? "★".repeat(stars) : "Not cleared yet"}${fish ? ` · best fish ${fish}` : ""}`;
+  const here = progress.map && progress.map.node === id;
+  if (button) button.textContent = here ? "Play" : "Walk";
+  card.hidden = false;
 }
 
 function doMapAction(action) {
@@ -2957,8 +2981,7 @@ function startLevel(index) {
   audio.playMusic(LEVELS[index].music);
   audio.setPurr(false);
   levelName.textContent = LEVELS[index].name;
-  const jumpLabel = document.querySelector("#jump");
-  if (jumpLabel) jumpLabel.textContent = "Jump";
+  setMapChrome(false);
   state.speech = { text: state.level.clue.open, after: "play" };
   show("play");
   paintSpeech();
@@ -3135,8 +3158,10 @@ function loop(now) {
       pressed.jump = false;
       const action = stepMap(progress, input, dt);
       if (action) doMapAction(action);
-      drawMap(ctx, view.width / (state && state.dpr || 1), view.height / (state && state.dpr || 1), state && state.dpr || 1, progress, makeCat(progress.cat), performance.now() / 1000);
-      paintMapChrome();
+      const tune = (WORLDS[progress.map.world] || WORLDS[0]).tune;
+      if (tune && audio.current !== tune) audio.playMusic(tune);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      drawMap(ctx, view.width / dpr, view.height / dpr, dpr, progress, makeCat(progress.cat), performance.now() / 1000);
     } else if (screen === "select") {
       drawPreview();
     } else if (screen === "complete") {
@@ -3324,6 +3349,9 @@ function padKeys() {
     ["action", "#action"],
     ["reel", "#reel"],
     ["done", "#fish-done"],
+    ["left", "#map-left"],
+    ["right", "#map-right"],
+    ["jump", "#map-go"],
   ];
 }
 
@@ -3492,9 +3520,20 @@ function boot() {
   document.querySelector("#view").addEventListener("pointerdown", (event) => {
     if (screen !== "map") return;
     const rect = view.getBoundingClientRect();
-    const world = hitWorld(event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height);
-    if (world == null) return;
-    const action = stepMap(progress, { world }, 0);
+    const id = pickMap(event.clientX - rect.left, event.clientY - rect.top);
+    if (!id) return;
+    chooseNode(progress, id);
+    showNodeCard(id);
+  });
+  document.querySelector("#node-play").addEventListener("click", () => {
+    if (screen !== "map") return;
+    const picked = selectedNode();
+    if (picked && progress.map && picked !== progress.map.node) {
+      chooseNode(progress, picked);
+      showNodeCard(picked);
+      return;
+    }
+    const action = enterCurrent(progress);
     if (action) doMapAction(action);
   });
   document.querySelector("#settings-close").addEventListener("click", () => {
@@ -4480,6 +4519,32 @@ function mapTest() {
   return { ok: true, levels: won.length };
 }
 
+function mapLayoutTest() {
+  openMap();
+  progress.map = { world: 0, node: "living" };
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  drawMap(ctx, view.width / dpr, view.height / dpr, dpr, progress, makeCat(progress.cat), 1.2);
+  const report = mapHudReport();
+  const cat = report.cat;
+  if (!cat || cat.w < 70 || cat.h < 90) throw new Error(`cat too small ${JSON.stringify(cat)}`);
+  const boxes = ["#map-left", "#map-right", "#map-go", "#pause"].map((sel) => {
+    const rect = document.querySelector(sel).getBoundingClientRect();
+    return { sel, l: rect.left, t: rect.top, r: rect.right, b: rect.bottom, w: rect.width };
+  }).filter((box) => box.w > 8);
+  const overlaps = (a, b) => a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t;
+  const catBox = { l: cat.x, t: cat.y, r: cat.x + cat.w, b: cat.y + cat.h };
+  const covered = boxes.filter((box) => overlaps(catBox, box));
+  if (covered.length) throw new Error(`cat covered ${covered.map((box) => box.sel).join(",")}`);
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      if (overlaps(boxes[i], boxes[j])) throw new Error(`overlap ${boxes[i].sel} ${boxes[j].sel}`);
+    }
+  }
+  if (cat.cx < report.view.w * 0.32 || cat.cx > report.view.w * 0.74) throw new Error(`cat x ${Math.round(cat.cx)} of ${report.view.w}`);
+  setMapChrome(false);
+  return { ok: true, cat };
+}
+
 function storyTest() {
   progress.cat = progress.cat || { name: "Miso", gender: "girl", hair: "short", coat: "orange", eyes: "green" };
   openStory();
@@ -4786,6 +4851,7 @@ window.sunbeam = {
   patrolTest,
   fishUiTest,
   mapTest,
+  mapLayoutTest,
   stepTest,
   enemyZoom,
   behaviorCard,
