@@ -1601,6 +1601,98 @@ function limb(g, x, y, phase, color, foot, len = 9) {
   g.fill();
 }
 
+function drawMouse(g, enemy, step) {
+  const sway = Math.sin(step * 0.32);
+  g.strokeStyle = "#b08978";
+  g.lineWidth = 1.25;
+  g.lineCap = "round";
+  g.beginPath();
+  g.moveTo(-13, 3);
+  g.quadraticCurveTo(-28, 10 + sway * 2, -38, -1);
+  g.quadraticCurveTo(-46, -12, -36, -16 + sway * 3);
+  g.stroke();
+  limb(g, -9, 7, step, "#c4a08a", "#f3b4c4", 10);
+  limb(g, -3, 8, step + Math.PI, "#c4a08a", "#f3b4c4", 10);
+  const body = g.createLinearGradient(-16, -8, 8, 12);
+  body.addColorStop(0, "#f6e4d6");
+  body.addColorStop(0.5, "#e2b89a");
+  body.addColorStop(1, "#c48b72");
+  g.fillStyle = body;
+  g.beginPath();
+  g.moveTo(-15, 1);
+  g.bezierCurveTo(-18, -8, -6, -6, 2, -3);
+  g.bezierCurveTo(8, -1, 7, 9, -1, 11);
+  g.bezierCurveTo(-12, 14, -18, 8, -15, 1);
+  g.fill();
+  softBody(g, "#a67b64");
+  g.fillStyle = "rgba(255, 246, 240, 0.9)";
+  g.beginPath();
+  g.ellipse(-3, 5, 7, 4.2, 0.15, 0, Math.PI * 2);
+  g.fill();
+  const head = g.createLinearGradient(4, -12, 20, 4);
+  head.addColorStop(0, "#f8eadf");
+  head.addColorStop(1, "#e4bea4");
+  g.fillStyle = head;
+  g.beginPath();
+  g.arc(8, -1, 7.4, 0, Math.PI * 2);
+  g.fill();
+  softBody(g, "#c49982");
+  g.fillStyle = "#f8ebe3";
+  g.beginPath();
+  g.moveTo(11, -1);
+  g.quadraticCurveTo(21, -4, 20, 2);
+  g.quadraticCurveTo(17, 6, 11, 4);
+  g.fill();
+  g.fillStyle = "#e57b93";
+  g.beginPath();
+  g.ellipse(19.2, 0.2, 1.7, 1.25, 0.3, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = "rgba(92, 62, 52, 0.55)";
+  g.lineWidth = 0.9;
+  g.beginPath();
+  g.moveTo(15, -0.5);
+  g.lineTo(26, -4);
+  g.moveTo(15, 0.6);
+  g.lineTo(27, 1);
+  g.moveTo(15, 1.8);
+  g.lineTo(25, 5);
+  g.stroke();
+  g.fillStyle = "#241c18";
+  g.beginPath();
+  g.arc(11.2, -2.6, 1.45, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#fff";
+  g.beginPath();
+  g.arc(11.6, -3.05, 0.45, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#d7b49a";
+  g.beginPath();
+  g.arc(3.5, -14.5, 7.2, 0, Math.PI * 2);
+  g.arc(12.5, -16, 7.4, 0, Math.PI * 2);
+  g.fill();
+  softBody(g, "#b08a74");
+  g.fillStyle = "#f7b7c8";
+  g.beginPath();
+  g.arc(3.5, -14.5, 4.1, 0, Math.PI * 2);
+  g.arc(12.5, -16, 4.2, 0, Math.PI * 2);
+  g.fill();
+  limb(g, 3, 5, step + 1.2, "#e7c2ae", "#f6b7c8", 6.5);
+  limb(g, 7, 6, step + Math.PI + 1.2, "#e7c2ae", "#f6b7c8", 6.5);
+  if (enemy.cheese) {
+    g.fillStyle = "#f2c14b";
+    g.beginPath();
+    g.moveTo(14, 7);
+    g.lineTo(23, 9);
+    g.lineTo(16, 15);
+    g.closePath();
+    g.fill();
+    g.fillStyle = "#e2a33a";
+    g.beginPath();
+    g.arc(18, 10, 1.2, 0, Math.PI * 2);
+    g.fill();
+  }
+}
+
 function drawEnemy(g, enemy, time) {
   if (enemy.alive === false && !enemy.flee) return;
   g.save();
@@ -1612,46 +1704,7 @@ function drawEnemy(g, enemy, time) {
   if (enemy.kind === "mouse") {
     g.save();
     g.scale(face, 1);
-    limb(g, -6, 5, step, "#c4a07e", "#e7a0b0", 8);
-    limb(g, -1, 6, step + Math.PI, "#c4a07e", "#e7a0b0", 8);
-    limb(g, 4, 5, step + 1.2, "#c4a07e", "#e7a0b0", 7);
-    limb(g, 8, 6, step + Math.PI + 1.2, "#c4a07e", "#e7a0b0", 7);
-    g.fillStyle = "#c9a184";
-    g.beginPath();
-    g.ellipse(0, 1, 14, 8, 0, 0, Math.PI * 2);
-    g.fill();
-    softBody(g, "#a88468");
-    g.fillStyle = "#f6e4d8";
-    g.beginPath();
-    g.ellipse(5, 3, 6, 4, 0, 0, Math.PI * 2);
-    g.fill();
-    g.fillStyle = "#f3c2cc";
-    g.beginPath();
-    g.ellipse(10, -4, 3.2, 4.2, 0.2, 0, Math.PI * 2);
-    g.ellipse(5, -5, 2.4, 3.4, -0.2, 0, Math.PI * 2);
-    g.fill();
-    g.strokeStyle = "#b88874";
-    g.lineWidth = 1.1;
-    g.beginPath();
-    g.moveTo(-12, 1);
-    g.quadraticCurveTo(-24, 10, -30, -2);
-    g.stroke();
-    g.fillStyle = "#2a211c";
-    g.beginPath();
-    g.arc(9, -1, 1.15, 0, Math.PI * 2);
-    g.fill();
-    if (enemy.cheese) {
-      g.fillStyle = "#f2c14b";
-      g.beginPath();
-      g.moveTo(12, 2);
-      g.lineTo(20, 4);
-      g.lineTo(13, 8);
-      g.fill();
-    }
-    g.fillStyle = "rgba(255,255,255,0.55)";
-    g.beginPath();
-    g.ellipse(2, -2, 4, 1.6, -0.4, 0, Math.PI * 2);
-    g.fill();
+    drawMouse(g, enemy, step);
     g.restore();
   } else if (enemy.kind === "bird") {
     drawBird(g, enemy, time);
@@ -3363,6 +3416,49 @@ function enemyZoom() {
   });
 }
 
+function frameMouse(id) {
+  const index = LEVELS.findIndex((level) => level.id === id);
+  startLevel(index);
+  const mouse = state.level.enemies.find((enemy) => enemy.kind === "mouse" && enemy.cheese && !enemy.chaser)
+    || state.level.enemies.find((enemy) => enemy.kind === "mouse" && !enemy.chaser)
+    || state.level.enemies.find((enemy) => enemy.kind === "mouse");
+  if (!mouse) return { id, missing: true };
+  if (mouse.hole) mouse.popped = true;
+  mouse.dir = 1;
+  mouse.t = 0.45;
+  state.player.x = mouse.x - 80;
+  state.player.y = GROUND - PH;
+  state.player.facing = 1;
+  state.camX = mouse.x - 220;
+  state.camY = Math.max(0, mouse.y - 150);
+  state.hintedJump = true;
+  state.bannerT = 0;
+  state.snapCam = true;
+  document.querySelector("#overlay").hidden = true;
+  document.querySelector("#hud").hidden = true;
+  document.querySelector("#pad").hidden = true;
+  document.querySelector("#sound-prompt").hidden = true;
+  snapshot();
+  const dpr = state.dpr || 1;
+  const copy = document.createElement("canvas");
+  copy.width = view.width;
+  copy.height = view.height;
+  copy.getContext("2d").drawImage(view, 0, 0);
+  const zoom = 2.8;
+  const sx = (mouse.x - state.camX) * dpr;
+  const sy = (mouse.y - state.camY) * dpr;
+  const sw = view.width / zoom;
+  const sh = view.height / zoom;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(copy, sx - sw / 2, sy - sh / 2, sw, sh, 0, 0, view.width, view.height);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.translate(view.width / dpr / 2, view.height / dpr / 2);
+  ctx.scale(zoom, zoom);
+  drawEnemy(ctx, { ...mouse, x: 0, y: 0 }, state.time || 0.4);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  return { id, cheese: !!mouse.cheese, hole: !!mouse.hole };
+}
+
 function birdZoom() {
   document.querySelector("#overlay").hidden = true;
   document.querySelector("#hud").hidden = true;
@@ -3446,6 +3542,7 @@ window.sunbeam = {
   stepTest,
   enemyZoom,
   behaviorCard,
+  frameMouse,
   birdZoom,
   audit,
   LEVELS,
