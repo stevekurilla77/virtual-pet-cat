@@ -66,9 +66,21 @@
             <div class="seg" id="wear" role="group" aria-label="Bond gifts"></div>
           </div>
           <div class="footer-row">
-            <button id="begin" class="primary" type="button">Into the living room</button>
+            <button id="begin" class="primary" type="button">Find her</button>
             <button id="back-title" class="ghost" type="button">Back</button>
           </div>
+        </div>
+      </div>
+    </section>
+    <section id="story" class="screen" hidden>
+      <div class="sheet glass">
+        <p class="eyebrow">Find the lost owner</p>
+        <h1 id="story-title">She went for a walk.</h1>
+        <p id="story-copy" class="lede">The owner went out for a walk and never came back. Only you can find her.</p>
+        <canvas id="story-art" width="640" height="220" aria-label="The story so far"></canvas>
+        <div class="row actions">
+          <button id="story-next" class="primary" type="button">Next</button>
+          <button id="story-skip" class="ghost" type="button">Skip</button>
         </div>
       </div>
     </section>
@@ -82,6 +94,7 @@
         <div class="row actions">
           <button id="next-level" class="primary" type="button">Next room</button>
           <button id="replay" class="ghost" type="button">Play again</button>
+          <button id="complete-credits" class="ghost" type="button">Credits</button>
           <button id="to-title" class="ghost" type="button">Title</button>
         </div>
       </div>
@@ -90,6 +103,7 @@
       <div class="sheet glass">
         <p class="eyebrow">Settings</p>
         <h1>Sound and doors</h1>
+        <p id="goal-line" class="lede">Find the owner. She left a trail of clues.</p>
         <label class="field">Music <input id="music-volume" type="range" min="0" max="100" value="60"></label>
         <label class="field">Effects <input id="sfx-volume" type="range" min="0" max="100" value="80"></label>
         <div class="row">
@@ -118,6 +132,7 @@
   <div id="hud" hidden>
     <div id="level-name" class="glass"></div>
     <div id="fish-hud" class="glass">🐟 <span id="fish-count">0</span> <span id="combo" hidden></span></div>
+    <canvas id="goal-tracker" width="148" height="32" aria-label="Clues found"></canvas>
     <div class="hearts" id="hearts"></div>
     <canvas id="food-ring" width="36" height="36" hidden aria-label="Wet food timer"></canvas>
     <canvas id="belly" width="36" height="36" aria-label="Belly meter"></canvas>
@@ -127,12 +142,20 @@
     <div id="progress" aria-hidden="true"><span id="progress-fill"></span></div>
   </div>
   <button id="sound-prompt" type="button" hidden>Tap to enable sound</button>
+  <button id="speech" type="button" hidden>
+    <span id="speech-text"></span>
+    <small>Tap to continue</small>
+  </button>
   <p id="banner" hidden></p>
   <pre id="debug-log" hidden></pre>
   <div id="pad" hidden>
     <div class="cluster left">
       <button class="padbtn" id="left" type="button" aria-label="Left">◀</button>
       <button class="padbtn" id="right" type="button" aria-label="Right">▶</button>
+      <div id="steer-vert" class="steer" hidden>
+        <button class="padbtn" id="up" type="button" aria-label="Up">▲</button>
+        <button class="padbtn" id="down" type="button" aria-label="Down">▼</button>
+      </div>
     </div>
     <div class="cluster right">
       <button class="padbtn small" id="fish-btn" type="button" hidden>Fish</button>

@@ -14,7 +14,7 @@ const JUMP = -650;
 const MAXRUN = 255;
 
 const audio = new PlayAudio();
-const held = { left: false, right: false, jump: false, scratch: false, fish: false, action: false };
+const held = { left: false, right: false, up: false, down: false, jump: false, scratch: false, fish: false, action: false };
 const pressed = { jump: false, scratch: false, fish: false, action: false };
 
 const view = document.querySelector("#view");
@@ -381,7 +381,31 @@ const LEVELS = [
   }),
 ];
 
+const CLUES = [
+  { id: "glasses", label: "Glasses", next: "the front porch", open: "Level 1: the living room. Where did she go?", say: "Oh look, her reading glasses! She must have come this way..." },
+  { id: "slippers", label: "Slippers", next: "the yard", open: "Level 2: the front porch. Where did she go?", say: "Her slippers! She can't have gone far..." },
+  { id: "yarn", label: "Yarn", next: "the neighbor's house", open: "Level 3: the yard. Where did she go?", say: "Her knitting yarn! The trail leads to the neighbor's house..." },
+  { id: "keys", label: "Keys", next: "tea with the neighbor", open: "Level 4: the neighbor's house. Where did she go?", say: "Her handbag and keys! She must be having tea just ahead..." },
+];
+const REUNION_LINE = "There you are. I only sat down for tea with the neighbor.";
+
 LEVELS.forEach(dressLevel);
+LEVELS.forEach((level, index) => {
+  const spec = CLUES[index];
+  level.clue = {
+    id: spec.id,
+    label: spec.label,
+    intro: spec.intro,
+    found: spec.found,
+    next: spec.next,
+    open: spec.open,
+    say: spec.say,
+    x: level.owner.x - (index === 3 ? 200 : 110),
+    y: GROUND - 36,
+    got: false,
+  };
+  level.ownerHere = index === LEVELS.length - 1;
+});
 LEVELS.forEach((level, index) => {
   level.audit = auditReach(level, index);
 });
@@ -410,6 +434,7 @@ function loadProgress() {
       fishBank: raw.fishBank || 0,
       bestFish: raw.bestFish || {},
       owned: raw.owned || {},
+      clues: raw.clues || {},
     };
   } catch (error) {
     return {
@@ -422,6 +447,7 @@ function loadProgress() {
       fishBank: 0,
       bestFish: {},
       owned: {},
+      clues: {},
     };
   }
 }
@@ -1159,7 +1185,11 @@ function updatePose(state, dt) {
   else if (Math.abs(player.vx) > 20) pose = "walk";
   player.pose = pose;
   const target = POSES[pose] || POSES.stand;
-  for (const key of POSE_KEYS) cat.m[key] += (target[key] - cat.m[key]) * Math.min(1, dt * 8);
+  if (player.ride) {
+    for (const key of POSE_KEYS) cat.m[key] = target[key];
+  } else {
+    for (const key of POSE_KEYS) cat.m[key] += (target[key] - cat.m[key]) * Math.min(1, dt * 8);
+  }
   const swiping = player.scratch > 0;
   cat.upright = swiping;
   cat.scratch = 0;
@@ -1186,8 +1216,9 @@ function updatePose(state, dt) {
   cat.purr = state.won ? 1 : Math.max(0, cat.purr - dt);
   cat.mouth = player.hurt > 0 ? "meow" : "none";
   cat.squint = player.hurt > 0 ? 1 : 0;
-  cat.tailAmp = pose === "run" ? 12 : 7;
-  cat.tailSpeed = pose === "run" ? 6 : 1.5;
+  cat.tailAmp = player.ride ? 16 : pose === "run" ? 12 : 7;
+  cat.tailSpeed = player.ride ? 6.4 : pose === "run" ? 6 : 1.5;
+  if (player.ride) cat.gaitBlend = 0;
   if (player.land > 0) player.land -= dt;
   if (player.scratch > 0) player.scratch = Math.max(0, player.scratch - dt);
   if (player.pounce > 0) player.pounce = Math.max(0, player.pounce - dt);
@@ -1253,11 +1284,20 @@ function finish(state) {
   state.progress.unlocked = Math.max(state.progress.unlocked, state.levelIndex + 2);
   if (state.level.rod) state.progress.rod = true;
   saveProgress(state.progress);
-  audio.setPurr(true);
-  audio.sting("music-fanfare");
-  audio.playMusic("music-inside");
-  audio.meow("greet");
-  showComplete(state);
+  const finale = state.levelIndex >= LEVELS.length - 1;
+  audio.setPurr(finale);
+  if (finale) {
+    audio.sting("music-fanfare");
+    audio.playMusic("music-inside");
+    audio.meow("greet");
+    state.speech = { text: REUNION_LINE, after: "complete" };
+  } else {
+    audio.sting("music-sting");
+    audio.ding();
+    state.speech = { text: state.level.clue.say, after: "complete" };
+  }
+  state.mode = "play";
+  paintSpeech();
 }
 
 function step(state, dt, input) {
@@ -1293,8 +1333,26 @@ function step(state, dt, input) {
   updateFish(state, dt);
   updateEnemies(state, dt);
   updatePose(state, dt);
+  const clue = state.level.clue;
+  if (clue && !clue.got) {
+    const dx = clue.x - (player.x + PW / 2);
+    const dy = clue.y - (player.y + PH / 2);
+    if (dx * dx + dy * dy < 70 * 70) {
+      clue.got = true;
+      state.progress.clues = state.progress.clues || {};
+      state.progress.clues[clue.id] = true;
+      saveProgress(state.progress);
+      if (state.levelIndex < LEVELS.length - 1) finish(state);
+      else {
+        state.speech = { text: clue.say, after: "play" };
+        audio.sting("music-sting");
+        audio.ding();
+        paintSpeech();
+      }
+    }
+  }
   const owner = state.level.owner;
-  if (player.x + PW > owner.x && player.y + PH > owner.y) finish(state);
+  if (state.levelIndex >= LEVELS.length - 1 && player.x + PW > owner.x && player.y + PH > owner.y) finish(state);
   for (const mark of state.level.checkpoints || []) {
     if (mark.got || !player.onGround) continue;
     if (Math.abs(player.x + PW / 2 - mark.x) < 40) {
@@ -1431,7 +1489,7 @@ function simulate(id) {
     step(state, dt, policy(state));
     frames += 1;
   }
-  return { id, won: state.won, x: Math.round(state.player.x), health: state.player.health, fish: state.fishGot, total: state.level.fishValue, frames };
+  return { id, won: state.won, x: Math.round(state.player.x), health: state.player.health, fish: state.fishGot, total: state.level.fishValue, frames, speech: state.speech ? state.speech.text : "" };
 }
 
 function planted(state) {
@@ -1923,6 +1981,67 @@ function drawWear(g, player) {
   g.restore();
 }
 
+function drawClue(g, clue, time) {
+  const bob = Math.sin(time * 3) * 4;
+  g.save();
+  g.translate(clue.x, clue.y + bob);
+  g.fillStyle = "rgba(255, 220, 120, 0.55)";
+  g.beginPath();
+  g.arc(0, 0, 34 + Math.sin(time * 5) * 3, 0, Math.PI * 2);
+  g.fill();
+  drawClueIcon(g, clue.id, 0, 0, 3.1, true);
+  g.restore();
+}
+
+function drawClueIcon(g, id, x, y, scale, lit) {
+  g.save();
+  g.translate(x, y);
+  g.scale(scale, scale);
+  g.globalAlpha = lit ? 1 : 0.35;
+  g.fillStyle = lit ? "#f2c14b" : "#8d7b6e";
+  g.strokeStyle = lit ? "#8a5a32" : "#6a5a50";
+  g.lineWidth = 1.4;
+  if (id === "glasses") {
+    g.lineWidth = 2.2;
+    g.beginPath();
+    g.arc(-7, 0, 5.5, 0, Math.PI * 2);
+    g.arc(7, 0, 5.5, 0, Math.PI * 2);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(-2, 0);
+    g.lineTo(2, 0);
+    g.stroke();
+  } else if (id === "slippers") {
+    g.beginPath();
+    g.ellipse(-6, 2, 6, 3.2, -0.2, 0, Math.PI * 2);
+    g.ellipse(6, 2, 6, 3.2, 0.2, 0, Math.PI * 2);
+    g.fill();
+  } else if (id === "yarn") {
+    g.beginPath();
+    g.arc(-2, 1, 6, 0, Math.PI * 2);
+    g.fill();
+    g.beginPath();
+    g.moveTo(3, 0);
+    g.quadraticCurveTo(10, -6, 12, 2);
+    g.stroke();
+    g.fillStyle = lit ? "#6eae84" : "#8d7b6e";
+    g.beginPath();
+    g.ellipse(8, -7, 6, 2.4, -0.4, 0, Math.PI * 2);
+    g.fill();
+  } else {
+    g.beginPath();
+    g.arc(-4, -2, 3.2, 0, Math.PI * 2);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(-1, 0);
+    g.lineTo(8, 6);
+    g.lineTo(6, 8);
+    g.stroke();
+    g.fillRect(2, 4, 7, 4);
+  }
+  g.restore();
+}
+
 function drawOwner(g, owner, time, theme, reunion, stars) {
   drawLady(g, owner.x, GROUND, time, theme, reunion ? (stars >= 3 ? "feast" : "reunion") : "idle");
 }
@@ -2085,8 +2204,11 @@ function drawWorld(state) {
   drawCans(ctx, state.level, state.time);
   drawHazards(ctx, state);
   drawScenery(ctx, level, state.time, state.camX, w / state.dpr);
-  const reunion = state.won || Math.abs(state.player.x - level.owner.x) < 120;
-  drawOwner(ctx, level.owner, state.time, level.theme, reunion, state.stars || 0);
+  if (level.clue && !level.clue.got) drawClue(ctx, level.clue, state.time);
+  if (level.ownerHere) {
+    const reunion = state.won || Math.abs(state.player.x - level.owner.x) < 120;
+    drawOwner(ctx, level.owner, state.time, level.theme, reunion, state.stars || 0);
+  }
   drawCatShadow(ctx, state);
   if (state.player.ride) {
     ctx.save();
@@ -2181,7 +2303,7 @@ const pad = document.querySelector("#pad");
 const fishBtn = document.querySelector("#fish-btn");
 
 function show(id) {
-  for (const name of ["title", "select", "complete", "settings", "credits"]) {
+  for (const name of ["title", "select", "story", "complete", "settings", "credits"]) {
     document.querySelector(`#${name}`).hidden = name !== id;
   }
   const playing = id === "play";
@@ -2222,26 +2344,31 @@ function startLevel(index) {
   audio.playMusic(LEVELS[index].music);
   audio.setPurr(false);
   levelName.textContent = LEVELS[index].name;
+  state.speech = { text: state.level.clue.open, after: "play" };
   show("play");
+  paintSpeech();
 }
 
 function showComplete(current) {
-  document.querySelector("#complete-title").textContent = `${progress.cat.name} found you.`;
-  document.querySelector("#complete-kicker").textContent = current.level.name;
+  const finale = current.levelIndex >= LEVELS.length - 1;
+  const clue = current.level.clue;
+  document.querySelector("#complete-kicker").textContent = finale ? "You found her" : "A clue";
+  document.querySelector("#complete-title").textContent = finale
+    ? `${progress.cat.name} found her.`
+    : clue ? `Her ${clue.label.toLowerCase()}.` : "A clue.";
   const stars = "★★★".slice(0, current.stars) + "☆☆☆".slice(current.stars);
   document.querySelector("#stars").textContent = stars;
   const cans = current.level.cans || [];
   const filled = cans.filter((can) => can.got).length;
-  const gift = current.stars >= 3
-    ? "She purrs and holds up a treat dish."
-    : current.progress.owned && current.progress.owned.hat
-      ? "A hat is waiting in the wardrobe."
-      : current.progress.owned && current.progress.owned.collar
-        ? "A collar is yours to wear."
-        : "She is glad you came home.";
-  document.querySelector("#complete-copy").textContent = `Fish ${current.fishGot} / ${current.level.fishValue}. Belly ${filled}/${cans.length || 3}. ${gift}`;
-  document.querySelector("#next-level").hidden = current.levelIndex >= LEVELS.length - 1;
+  const trail = finale
+    ? REUNION_LINE
+    : clue ? `${clue.say} On to ${clue.next}.` : "A trail of clues. Keep going.";
+  document.querySelector("#complete-copy").textContent = `${trail} Fish ${current.fishGot} / ${current.level.fishValue}. Belly ${filled}/${cans.length || 3}.`;
+  document.querySelector("#next-level").hidden = finale;
+  document.querySelector("#next-level").textContent = clue && !finale ? `On to ${clue.next}` : "Next room";
+  document.querySelector("#complete-credits").hidden = !finale;
   show("complete");
+  drawReunion();
 }
 
 function paintHud() {
@@ -2280,6 +2407,16 @@ function paintHud() {
   const fill = document.querySelector("#progress-fill");
   if (fill) fill.style.width = `${Math.max(0, Math.min(1, state.player.x / Math.max(1, state.level.owner.x))) * 100}%`;
   paintSound();
+  syncRidePad();
+  const tracker = document.querySelector("#goal-tracker");
+  if (tracker) {
+    const pen = tracker.getContext("2d");
+    pen.clearRect(0, 0, 148, 32);
+    CLUES.forEach((spec, index) => {
+      const found = !!(state.progress.clues && state.progress.clues[spec.id]);
+      drawClueIcon(pen, spec.id, 18 + index * 36, 16, 1.15, found);
+    });
+  }
   banner.hidden = state.bannerT <= 0;
   banner.textContent = state.banner;
   const nearWater = state.level.water.some((water) => {
@@ -2345,10 +2482,16 @@ function loop(now) {
   const dt = Math.min(0.033, (now - (loop.last || now)) / 1000);
   loop.last = now;
   try {
-    if (state && state.mode === "play") {
+    if (state && state.speech && state.mode === "play") {
+      paintSpeech();
+      drawWorld(state);
+      paintHud();
+    } else if (state && state.mode === "play") {
       const input = {
         left: held.left,
         right: held.right,
+        up: held.up,
+        down: held.down,
         jump: held.jump,
         jumpPressed: pressed.jump,
         scratch: held.scratch,
@@ -2421,16 +2564,48 @@ function drawPreview() {
   paintCat(g, cat, performance.now() / 1000);
 }
 
+function paintSpeech() {
+  const box = document.querySelector("#speech");
+  if (!box) return;
+  const text = state && state.speech ? state.speech.text : "";
+  box.hidden = !text;
+  const node = document.querySelector("#speech-text");
+  if (node) node.textContent = text;
+}
+
+function advanceSpeech() {
+  if (!state || !state.speech) return;
+  const after = state.speech.after;
+  state.speech = null;
+  paintSpeech();
+  if (after === "complete") {
+    state.mode = "complete";
+    showComplete(state);
+  }
+}
+
 function drawReunion() {
   const canvas = document.querySelector("#reunion");
   if (!canvas || document.querySelector("#complete").hidden) return;
-  const theme = state && state.level ? state.level.theme : "living";
+  const finale = state && state.levelIndex >= LEVELS.length - 1;
   const g = canvas.getContext("2d");
   const time = performance.now() / 1000;
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.clearRect(0, 0, canvas.width, canvas.height);
   g.fillStyle = "#fff6ee";
   g.fillRect(0, 0, canvas.width, canvas.height);
+  if (!finale) {
+    const clue = state && state.level && state.level.clue;
+    if (clue) {
+      g.fillStyle = "rgba(255, 214, 120, 0.85)";
+      g.beginPath();
+      g.arc(canvas.width * 0.5, canvas.height * 0.55, 54, 0, Math.PI * 2);
+      g.fill();
+      drawClueIcon(g, clue.id, canvas.width * 0.5, canvas.height * 0.55, 4.2, true);
+    }
+    return;
+  }
+  const theme = state && state.level ? state.level.theme : "living";
   drawLady(g, 360, 250, time, theme, state && state.stars >= 3 ? "feast" : "reunion");
   const cat = makeCat(progress.cat);
   cat.x = 250;
@@ -2503,6 +2678,8 @@ function padKeys() {
   return [
     ["left", "#left"],
     ["right", "#right"],
+    ["up", "#up"],
+    ["down", "#down"],
     ["jump", "#jump"],
     ["scratch", "#scratch"],
     ["fish", "#fish-btn"],
@@ -2527,6 +2704,20 @@ function nearestPad(x, y) {
     }
   }
   return best;
+}
+
+function syncRidePad() {
+  const vert = document.querySelector("#steer-vert");
+  if (!vert) return;
+  const riding = !!(state && state.player && state.player.ride);
+  vert.hidden = !riding;
+  if (!riding) {
+    held.up = false;
+    held.down = false;
+    for (const [id, key] of pointers) {
+      if (key === "up" || key === "down") pointers.delete(id);
+    }
+  }
 }
 
 function paintPad() {
@@ -2566,8 +2757,9 @@ function bindPad() {
     const prev = pointers.get(event.pointerId);
     const next = nearestPad(event.clientX, event.clientY);
     if (!next || next === prev) return;
-    const steering = (name) => name === "left" || name === "right";
-    if (steering(prev) && steering(next)) {
+    const horiz = (name) => name === "left" || name === "right";
+    const vert = (name) => name === "up" || name === "down";
+    if ((horiz(prev) && horiz(next)) || (vert(prev) && vert(next))) {
       pointers.set(event.pointerId, next);
       holdKey(prev, false);
       holdKey(next, true);
@@ -2600,7 +2792,7 @@ function boot() {
   document.querySelector("#begin").addEventListener("click", () => {
     progress.cat = { ...progress.cat, ...readCat() };
     saveProgress(progress);
-    startLevel(0);
+    openStory();
   });
   document.querySelector("#back-title").addEventListener("click", () => show("title"));
   document.querySelector("#title-settings").addEventListener("click", () => openSettings());
@@ -2615,7 +2807,14 @@ function boot() {
     } else show("title");
   });
   document.querySelector("#credits-open").addEventListener("click", () => show("credits"));
-  document.querySelector("#credits-close").addEventListener("click", () => openSettings());
+  document.querySelector("#credits-close").addEventListener("click", () => {
+    if (state && state.won) show("complete");
+    else openSettings();
+  });
+  document.querySelector("#story-next").addEventListener("click", nextStory);
+  document.querySelector("#story-skip").addEventListener("click", () => startLevel(0));
+  document.querySelector("#speech").addEventListener("click", advanceSpeech);
+  document.querySelector("#complete-credits").addEventListener("click", () => show("credits"));
   document.querySelector("#next-level").addEventListener("click", () => startLevel(Math.min(LEVELS.length - 1, state.levelIndex + 1)));
   document.querySelector("#replay").addEventListener("click", () => startLevel(state.levelIndex));
   document.querySelector("#to-title").addEventListener("click", () => {
@@ -2669,6 +2868,8 @@ function boot() {
     const key = event.key.toLowerCase();
     if (key === "arrowleft" || key === "a") held.left = true;
     if (key === "arrowright" || key === "d") held.right = true;
+    if (key === "arrowdown" || key === "s") held.down = true;
+    if (key === "arrowup" || key === "w") held.up = true;
     if (key === " " || key === "arrowup" || key === "w") {
       held.jump = true;
       pressed.jump = true;
@@ -2682,7 +2883,12 @@ function boot() {
     const key = event.key.toLowerCase();
     if (key === "arrowleft" || key === "a") held.left = false;
     if (key === "arrowright" || key === "d") held.right = false;
-    if (key === " " || key === "arrowup" || key === "w") held.jump = false;
+    if (key === "arrowdown" || key === "s") held.down = false;
+    if (key === "arrowup" || key === "w") {
+      held.up = false;
+      held.jump = false;
+    }
+    if (key === " ") held.jump = false;
   });
   const releaseInput = () => releasePads();
   window.addEventListener("blur", releaseInput);
@@ -2811,8 +3017,64 @@ function fillJumps() {
   }));
 }
 
+const STORY = [
+  { title: "She went for a walk.", copy: "The owner went out for a walk and never came back. Only you can find her." },
+  { title: "A trail of clues.", copy: "She left her glasses, her slippers, a ball of yarn, and her keys." },
+  { title: "Find her.", copy: "Start in the living room. Follow what she dropped, all the way to tea." },
+];
+let storyPage = 0;
+
+function openStory() {
+  storyPage = 0;
+  show("story");
+  paintStory();
+}
+
+function nextStory() {
+  storyPage += 1;
+  if (storyPage >= STORY.length) startLevel(0);
+  else paintStory();
+}
+
+function paintStory() {
+  const page = STORY[storyPage] || STORY[0];
+  document.querySelector("#story-title").textContent = page.title;
+  document.querySelector("#story-copy").textContent = page.copy;
+  document.querySelector("#story-next").textContent = storyPage >= STORY.length - 1 ? "Into the living room" : "Next";
+  const canvas = document.querySelector("#story-art");
+  if (!canvas) return;
+  const g = canvas.getContext("2d");
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  const sky = g.createLinearGradient(0, 0, 0, canvas.height);
+  sky.addColorStop(0, storyPage === 1 ? "#9ae7ff" : storyPage === 2 ? "#ffd29a" : "#ffe0a8");
+  sky.addColorStop(1, "#fff6ee");
+  g.fillStyle = sky;
+  g.fillRect(0, 0, canvas.width, canvas.height);
+  g.fillStyle = "#e0903a";
+  g.fillRect(0, canvas.height - 36, canvas.width, 36);
+  if (storyPage === 1) {
+    CLUES.forEach((spec, index) => drawClueIcon(g, spec.id, 120 + index * 110, canvas.height * 0.42, 2.4, true));
+  }
+  const cat = makeCat(progress.cat);
+  cat.x = storyPage === 2 ? canvas.width * 0.5 : canvas.width * 0.28;
+  cat.groundY = canvas.height - 36;
+  cat.scale = 1.15;
+  cat.facing = 1;
+  cat.hideShadow = false;
+  paintCat(g, cat, 0.4);
+  if (storyPage !== 1) drawLady(g, canvas.width * 0.72, canvas.height - 36, 0.8, storyPage === 2 ? "neighbor" : "living", storyPage === 0 ? "idle" : "reunion");
+}
+
 function openSettings() {
   syncSound();
+  const found = CLUES.filter((spec) => progress.clues && progress.clues[spec.id]).map((spec) => spec.label.toLowerCase());
+  const goal = document.querySelector("#goal-line");
+  if (goal) {
+    goal.textContent = found.length
+      ? `Find the owner. Clues so far: ${found.join(", ")}.`
+      : "Find the owner. She left her glasses, slippers, yarn, and keys.";
+  }
   document.querySelector("#unlock-all").textContent = progress.unlockAll ? "All levels open" : "Unlock all levels";
   fillJumps();
   show("settings");
@@ -3134,9 +3396,18 @@ function rideTest() {
   const steer = { ...still(), right: true, jump: true, jumpPressed: false };
   const x0 = trial.player.x;
   const y0 = trial.player.y;
-  for (let i = 0; i < 50; i++) step(trial, 1 / 60, steer);
+  for (let i = 0; i < 40; i++) step(trial, 1 / 60, steer);
   const moved = started && Math.abs(trial.player.x - x0) > 12;
   const flew = started && trial.player.y < y0 - 24;
+  const sitting = trial.player.pose === "sit";
+  if (trial.player.ride) trial.player.ride.fvy = 0;
+  const up0 = trial.player.y;
+  for (let i = 0; i < 24; i++) step(trial, 1 / 60, { ...still(), up: true });
+  const rose = trial.player.y < up0 - 8;
+  if (trial.player.ride) trial.player.ride.fvy = 0;
+  const mid = trial.player.y;
+  for (let i = 0; i < 24; i++) step(trial, 1 / 60, { ...still(), down: true });
+  const sank = trial.player.y > mid + 6;
   const during = Number.isFinite(trial.player.x) && trial.player.y > 20 && trial.player.y < GROUND;
   if (trial.player.ride) trial.player.ride.ride = 0.02;
   for (let i = 0; i < 90; i++) step(trial, 1 / 60, still());
@@ -3146,6 +3417,9 @@ function rideTest() {
     started,
     moved,
     flew,
+    sitting,
+    rose,
+    sank,
     during,
     ended: !trial.player.ride,
     y: Math.round(trial.player.y),
@@ -3237,7 +3511,12 @@ function auditReach(level, levelIndex) {
     fish.x = to.x;
     fish.y = to.y;
   }
+  if (level.clue && !can(level.clue)) {
+    level.clue.x = Math.min(level.clue.x, level.owner.x - 120);
+    level.clue.y = GROUND - 36;
+  }
   const unreachable = level.fish.filter((fish) => !can(fish)).map((fish) => ({ x: Math.round(fish.x), y: Math.round(fish.y) }));
+  if (level.clue && !can(level.clue)) unreachable.push({ clue: level.clue.id, x: Math.round(level.clue.x), y: Math.round(level.clue.y) });
   level.fishValue = level.fish.length;
   return {
     id: level.id,
@@ -3263,6 +3542,78 @@ function fishAudit() {
     flight: level.audit.flight,
     sample: level.audit.movedList,
   }));
+}
+
+function rideControlTest() {
+  document.querySelector("#overlay").hidden = true;
+  document.querySelector("#pad").hidden = false;
+  if (!state) startLevel(0);
+  state.player.ride = null;
+  syncRidePad();
+  const hiddenBefore = document.querySelector("#steer-vert").hidden === true;
+  state.player.ride = { ride: 8 };
+  syncRidePad();
+  const shown = document.querySelector("#steer-vert").hidden === false;
+  const up = document.querySelector("#up").getBoundingClientRect();
+  const right = document.querySelector("#right").getBoundingClientRect();
+  const down = document.querySelector("#down").getBoundingClientRect();
+  const pad = document.querySelector("#pad");
+  const fire = (type, id, x, y) => {
+    pad.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: y, bubbles: true, pointerType: "touch" }));
+  };
+  releasePads();
+  syncRidePad();
+  fire("pointerdown", 7, up.left + up.width / 2, up.top + up.height / 2);
+  fire("pointerdown", 8, right.left + right.width / 2, right.top + right.height / 2);
+  const both = held.up === true && held.right === true && held.down === false;
+  fire("pointerup", 7, up.left + up.width / 2, up.top + up.height / 2);
+  const rightStays = held.right === true && held.up === false;
+  fire("pointerdown", 9, down.left + down.width / 2, down.top + down.height / 2);
+  const downHeld = held.down === true && held.right === true;
+  releasePads();
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", bubbles: true }));
+  const keyDown = held.down === true;
+  window.dispatchEvent(new KeyboardEvent("keyup", { key: "s", bubbles: true }));
+  const keyClear = held.down === false;
+  state.player.ride = null;
+  syncRidePad();
+  const hiddenAfter = document.querySelector("#steer-vert").hidden === true;
+  return {
+    hiddenBefore,
+    shown,
+    both,
+    rightStays,
+    downHeld,
+    keyDown,
+    keyClear,
+    hiddenAfter,
+    ok: hiddenBefore && shown && both && rightStays && downHeld && keyDown && keyClear && hiddenAfter,
+  };
+}
+
+function storyTest() {
+  progress.cat = progress.cat || { name: "Miso", gender: "girl", hair: "short", coat: "orange", eyes: "green" };
+  openStory();
+  document.querySelector("#story-skip").click();
+  const skipped = screen === "play" && state && state.levelIndex === 0 && document.querySelector("#story").hidden === true;
+  const trial = fresh(progress, 0);
+  trial.mode = "play";
+  const clue = trial.level.clue;
+  trial.player.x = clue.x - 20;
+  trial.player.y = GROUND - PH;
+  trial.player.onGround = true;
+  for (let i = 0; i < 40; i++) step(trial, 1 / 60, { ...still(), right: true });
+  const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
+  const picked = !!(trial.won && trial.level.clue.got && saved.clues && saved.clues.glasses && trial.speech && trial.speech.text.includes("reading glasses"));
+  const finale = simulate("neighbor");
+  const ownerOnlyAtEnd = LEVELS.every((level, index) => level.ownerHere === (index === LEVELS.length - 1));
+  return {
+    skipped,
+    picked,
+    ownerOnlyAtEnd,
+    reunion: finale.won === true && finale.id === "neighbor" && (finale.speech || "").includes("tea"),
+    ok: skipped && picked && ownerOnlyAtEnd && finale.won === true && (finale.speech || "").includes("tea"),
+  };
 }
 
 function inputTest() {
@@ -3539,6 +3890,8 @@ window.sunbeam = {
   fishAudit,
   birdDiveTest,
   inputTest,
+  rideControlTest,
+  storyTest,
   stepTest,
   enemyZoom,
   behaviorCard,

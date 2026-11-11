@@ -541,7 +541,8 @@ function rideRoomba(state, hazard, dt, audio, input) {
   hazard.flyY = hazard.flyY || GROUND;
   const feet = player.y + 58;
   const discY = hazard.ride > 0 ? hazard.flyY : GROUND;
-  const over = !player.ride && hazard.cool <= 0 && player.vy >= 0 && feet < discY - 8 && feet > discY - 90 && Math.abs(player.x + 16 - hazard.x) < 74;
+  const top = discY - 30;
+  const over = !player.ride && hazard.cool <= 0 && player.vy >= 0 && feet < top + 16 && feet > top - 40 && Math.abs(player.x + 16 - hazard.x) < 70;
   if (over) {
     player.ride = hazard;
     hazard.ride = RIDE_TIME;
@@ -550,7 +551,7 @@ function rideRoomba(state, hazard, dt, audio, input) {
     hazard.flyY = GROUND - 24;
     if (!state.rideHint) {
       state.rideHint = true;
-      state.banner = "Hold Jump to rise. Left and right steer. It sets you down gently.";
+      state.banner = "Up and down fly. Left and right steer. It sets you down gently.";
       state.bannerT = 2.8;
     }
     audio.hum(true, RIDE_TIME, 1);
@@ -561,9 +562,12 @@ function rideRoomba(state, hazard, dt, audio, input) {
   hazard.fvx += dir * 640 * dt;
   if (!dir) hazard.fvx *= Math.max(0, 1 - 2.4 * dt);
   hazard.fvx = Math.max(-210, Math.min(210, hazard.fvx));
-  hazard.fvy += (input.jump ? -380 : 150) * dt;
-  hazard.fvy *= Math.max(0, 1 - 1.5 * dt);
-  hazard.fvy = Math.max(-150, Math.min(78, hazard.fvy));
+  const rise = !!(input.up || input.jump);
+  const drop = !!input.down;
+  const climb = rise && !drop ? -480 : drop && !rise ? 520 : rise && drop ? 0 : 80;
+  hazard.fvy += climb * dt;
+  hazard.fvy *= Math.max(0, 1 - 1.6 * dt);
+  hazard.fvy = Math.max(-160, Math.min(120, hazard.fvy));
   hazard.x += hazard.fvx * dt;
   hazard.flyY += hazard.fvy * dt;
   const left = 48;
@@ -580,9 +584,9 @@ function rideRoomba(state, hazard, dt, audio, input) {
     hazard.flyY = GROUND - 18;
     hazard.fvy = Math.min(0, hazard.fvy);
   }
-  const bob = Math.sin(state.time * 7) * 3;
+  const bob = Math.sin(state.time * 9) * 1.8;
   player.x = hazard.x - 16;
-  player.y = hazard.flyY - 64 + bob;
+  player.y = hazard.flyY - 62 + bob;
   player.vx = hazard.fvx;
   player.vy = hazard.fvy;
   player.onGround = false;
@@ -766,50 +770,68 @@ function drawOne(g, hazard, time) {
     });
   } else if (hazard.kind === "roomba") {
     const flying = hazard.ride > 0;
-    g.scale(1.45, 1.45);
+    const face = hazard.dir === -1 ? -1 : 1;
     if (flying) {
-      g.fillStyle = "rgba(170, 220, 255, 0.35)";
+      g.fillStyle = "rgba(180, 220, 235, 0.28)";
       g.beginPath();
-      g.ellipse(0, -18, 62, 28, 0, 0, Math.PI * 2);
+      g.ellipse(0, 4, 70, 10, 0, 0, Math.PI * 2);
       g.fill();
     }
-    g.fillStyle = "#9aa7b0";
+    g.fillStyle = "#2f363c";
     g.beginPath();
-    g.ellipse(0, -28, 56, 24, 0, 0, Math.PI * 2);
+    g.ellipse(0, -16, 66, 16, 0, 0, Math.PI * 2);
     g.fill();
-    g.fillStyle = "#6d7b84";
+    g.fillStyle = "#3e474e";
     g.beginPath();
-    g.ellipse(0, -16, 56, 14, 0, 0, Math.PI);
+    g.ellipse(0, -20, 62, 11, 0, 0, Math.PI * 2);
     g.fill();
-    g.fillStyle = "#d5dde2";
+    g.fillStyle = "#d5dbe0";
     g.beginPath();
-    g.ellipse(0, -42, 26, 14, 0, 0, Math.PI * 2);
+    g.ellipse(0, -24, 46, 8, 0, 0, Math.PI * 2);
     g.fill();
-    g.fillStyle = "#2f3a40";
-    g.fillRect(-18, -50, 36, 6);
-    g.fillStyle = "rgba(120, 190, 220, 0.55)";
-    g.fillRect(10, -36, 18, 10);
-    const blink = Math.sin(time * (flying && hazard.ride < 2 ? 18 : 6)) > 0;
-    g.fillStyle = blink ? "#b8ff8a" : "#3d6b4a";
+    g.strokeStyle = "rgba(70, 78, 84, 0.45)";
+    g.lineWidth = 1;
     g.beginPath();
-    g.arc(-18, -44, 3.6, 0, Math.PI * 2);
-    g.fill();
-    g.save();
-    g.translate(48, -14);
-    g.rotate(time * 14);
-    g.strokeStyle = "#3a4650";
+    g.ellipse(0, -24, 46, 8, 0, 0, Math.PI * 2);
+    g.stroke();
+    g.strokeStyle = flying && hazard.ride < 2 && Math.sin(time * 16) > 0 ? "#b6f5c4" : "#7d8a84";
     g.lineWidth = 2;
     g.beginPath();
-    g.moveTo(-7, 0);
-    g.lineTo(7, 0);
-    g.moveTo(0, -7);
-    g.lineTo(0, 7);
+    g.arc(0, -24, 14, 0, Math.PI * 2);
+    g.stroke();
+    g.fillStyle = "#4a545c";
+    g.beginPath();
+    g.arc(0, -24, 8, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#eef2f4";
+    g.beginPath();
+    g.arc(-2, -26, 2.2, 0, Math.PI * 2);
+    g.fill();
+    g.save();
+    g.scale(face, 1);
+    g.fillStyle = "#8d979e";
+    g.beginPath();
+    g.ellipse(40, -12, 18, 7, 0, -0.6, 0.9);
+    g.fill();
+    g.fillStyle = "#1c2226";
+    for (const spot of [[28, -6], [40, -5], [50, -7]]) {
+      g.beginPath();
+      g.arc(spot[0], spot[1], 1.6, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.save();
+    g.translate(58, -8);
+    g.rotate(time * 16);
+    g.strokeStyle = "#5c6770";
+    g.lineWidth = 1.2;
+    g.beginPath();
+    g.moveTo(-5, 0);
+    g.lineTo(5, 0);
+    g.moveTo(0, -5);
+    g.lineTo(0, 5);
     g.stroke();
     g.restore();
-    g.fillStyle = "#243038";
-    g.font = "700 9px 'Avenir Next', 'Segoe UI', sans-serif";
-    g.textAlign = "center";
-    g.fillText("ROBO-VAC", 0, -36);
+    g.restore();
   } else if (hazard.kind === "cushion") {
     const squash = 1 + Math.sin(time * 6) * 0.04;
     g.fillStyle = "#f0a0c0";

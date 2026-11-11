@@ -109,7 +109,34 @@ button { cursor: pointer; border: 0; background: transparent; }
   pointer-events: auto;
 }
 
-.screen[hidden], #hud[hidden], #pad[hidden], #banner[hidden], #home-tip[hidden] { display: none !important; }
+.screen[hidden], #hud[hidden], #pad[hidden], #banner[hidden], #home-tip[hidden], #speech[hidden] { display: none !important; }
+#speech {
+  position: absolute;
+  z-index: 7;
+  left: 50%;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(560px, 92vw);
+  margin: 0;
+  padding: 16px 18px 12px;
+  border: 0;
+  border-radius: 20px;
+  background: rgba(44, 32, 24, 0.92);
+  color: #fff8f2;
+  font: 700 18px/1.35 "Avenir Next", "Segoe UI", ui-rounded, sans-serif;
+  text-align: left;
+  pointer-events: auto;
+}
+#speech small {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #f2c14b;
+}
+#goal-tracker { width: 148px; height: 32px; pointer-events: none; }
+#story-art, #reunion { width: min(100%, 460px); height: clamp(96px, 26dvh, 160px); display: block; margin: 4px auto 6px; border-radius: 16px; background: #fff6ee; }
 
 .sheet {
   width: min(640px, 100%);
@@ -402,7 +429,9 @@ input[type="range"] { height: 28px; padding: 0; }
   pointer-events: auto;
 }
 
-.cluster.left { left: calc(14px + env(safe-area-inset-left)); }
+.cluster.left { left: calc(14px + env(safe-area-inset-left)); align-items: flex-end; }
+.steer { display: flex; flex-direction: column; gap: 8px; }
+#steer-vert[hidden] { display: none !important; }
 .cluster.right { right: calc(14px + env(safe-area-inset-right)); }
 
 .padbtn {
