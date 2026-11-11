@@ -1,0 +1,120 @@
+const BASE = {
+  bodyX: -2,
+  bodyY: -36,
+  bodyRx: 44,
+  bodyRy: 23,
+  headX: 36,
+  headY: -66,
+  legTuck: 0,
+  tailLift: 0.7,
+  groom: 0,
+  stretch: 0,
+  earBack: 0,
+  bodyRot: 0,
+  stride: 0,
+};
+
+function pose(overrides) {
+  return Object.assign({}, BASE, overrides);
+}
+
+export const POSE_KEYS = Object.keys(BASE);
+
+export const POSES = {
+  stand: pose({}),
+  walk: pose({ stride: 1, bodyY: -37, tailLift: 0.8 }),
+  run: pose({
+    bodyY: -34,
+    bodyRx: 50,
+    bodyRy: 19,
+    headX: 44,
+    headY: -58,
+    tailLift: 0.05,
+    earBack: 0.85,
+    stride: 1.35,
+    bodyRot: -0.06,
+  }),
+  stalk: pose({
+    bodyY: -30,
+    bodyRx: 50,
+    bodyRy: 18,
+    headX: 40,
+    headY: -50,
+    tailLift: -0.45,
+    stride: 0.45,
+    bodyRot: 0.1,
+    earBack: 0,
+  }),
+  pounce: pose({
+    bodyY: -46,
+    bodyRx: 50,
+    bodyRy: 18,
+    headX: 54,
+    headY: -52,
+    tailLift: -0.15,
+    stride: 0,
+    bodyRot: -0.5,
+    earBack: 0.15,
+  }),
+  sit: pose({
+    bodyX: 0,
+    bodyY: -16,
+    bodyRx: 30,
+    bodyRy: 16,
+    headX: 16,
+    headY: -40,
+    legTuck: 1,
+    tailLift: 0.85,
+    stride: 0,
+  }),
+  groom: pose({
+    bodyX: 0,
+    bodyY: -16,
+    bodyRx: 30,
+    bodyRy: 16,
+    headX: 14,
+    headY: -38,
+    legTuck: 1,
+    tailLift: 0.4,
+    groom: 1,
+    stride: 0,
+  }),
+  stretch: pose({
+    bodyX: 4,
+    bodyY: -22,
+    bodyRx: 60,
+    bodyRy: 16,
+    headX: 66,
+    headY: -30,
+    legTuck: 0,
+    tailLift: 0.35,
+    stretch: 1,
+    stride: 0,
+    bodyRot: 0.2,
+  }),
+  curl: pose({
+    bodyX: -2,
+    bodyY: -28,
+    bodyRx: 32,
+    bodyRy: 26,
+    headX: 16,
+    headY: -52,
+    legTuck: 1,
+    tailLift: 0.2,
+    stride: 0,
+  }),
+  back: pose({
+    bodyY: -40,
+    bodyRx: 42,
+    bodyRy: 26,
+    headX: 40,
+    headY: -36,
+    legTuck: 1,
+    tailLift: -0.2,
+    stride: 0,
+  }),
+};
+
+export function clonePose(name) {
+  return Object.assign({}, POSES[name] || POSES.sit);
+}

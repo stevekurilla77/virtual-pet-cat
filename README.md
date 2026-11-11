@@ -1,6 +1,8 @@
 # Sunbeam
 
-A small virtual pet cat. Pick a coat, give them a name, and leave them in a sunny room. They wander, nap, groom, watch birds, and play when you do.
+A side-scrolling cat adventure, and the earlier quiet virtual pet.
+
+The game at the root is a modern side-scroller. Pick a coat, then run, jump, and collect fish through the living room, the porch, the yard, and the neighbor’s house. Each level ends with the cat’s person. The original pet still lives at [pet/index.html](pet/index.html).
 
 Sunbeam is a static site: no build step, no account, no ads, and nothing is sent off the phone. The cat you design is saved in `localStorage` on the device.
 
@@ -14,7 +16,7 @@ python3 -m http.server 8741
 
 Open [http://127.0.0.1:8741/](http://127.0.0.1:8741/).
 
-Any static file server works. The page uses ES modules, so open it over `http://` rather than as a `file://` URL. iPhone Safari and a desktop mouse are both supported. Hold the phone in portrait.
+Any static file server works. The page uses ES modules, so open it over `http://` rather than as a `file://` URL. Hold the phone in landscape. Arrows or A and D move, space jumps, J scratches, and F casts the rod. The earlier pet is at `pet/index.html`.
 
 ## GitHub Pages
 
@@ -66,6 +68,6 @@ On an iPhone, sound starts at the first tap. The page asks Safari to treat it as
 
 ## Credits
 
-The lullaby is original music made for Sunbeam. The scratch of claws, the little paw pop, and the box rustle are still made live in the browser.
+The lullabies, the four adventure themes, the fishing sting, the victory fanfare, and the little hurt cue are original music made for Sunbeam. The scratch of claws is still made live in the browser.
 
 Cat and bird recordings: "Weibliche Britisch Kurzhaar will Futter C1277 MIAUEN" by PantheraLeo1359531, CC BY 4.0, Wikimedia Commons. Additional recordings (CC0 / public domain) by Kerzoven, IgnasD, patchytherat, Tsester, George Miquilena, freemaster2, Luke100000, Adam Cuerden, Zabuhailo, Sadiquecat, simon.danielsson, FartMuffin, Shyamal, and Akum20, via OpenGameArt.org, Freesound.org, and Wikimedia Commons.
