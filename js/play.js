@@ -116,10 +116,10 @@ function placeFoe(world, kind, frac, width, extra = {}) {
   for (let hop = 0; hop < 14; hop++) {
     const nearBed = world.checkpoints.some((mark) => Math.abs(mark.x - spot) < 170);
     const floor = floorAt(world.solids, spot);
-    const bodyY = kind === "bird" ? 146 : kind === "fish" ? GROUND - 6 : GROUND - 24;
+    const bodyY = kind === "bird" ? 214 : kind === "fish" ? GROUND - 6 : GROUND - 24;
     const blocked = world.solids.some((block) => block.kind !== "floor" && block.kind !== "pond" && spot > block.x + 8 && spot < block.x + block.w - 8 && bodyY > block.y && bodyY < block.y + block.h);
     if (floor && !nearBed && !blocked) {
-      const y = kind === "bird" ? 146 : kind === "fish" ? GROUND - 6 : kind === "chicken" || kind === "rooster" ? GROUND - 30 : GROUND - 20;
+      const y = kind === "bird" ? 214 : kind === "fish" ? GROUND - 6 : kind === "chicken" || kind === "rooster" ? GROUND - 30 : GROUND - 20;
       world.enemies = world.enemies || [];
       world.enemies.push({
         kind,
@@ -409,6 +409,7 @@ function loadProgress() {
       unlockAll: Boolean(raw.unlockAll),
       fishBank: raw.fishBank || 0,
       bestFish: raw.bestFish || {},
+      owned: raw.owned || {},
     };
   } catch (error) {
     return {
@@ -420,6 +421,7 @@ function loadProgress() {
       unlockAll: false,
       fishBank: 0,
       bestFish: {},
+      owned: {},
     };
   }
 }
@@ -504,6 +506,9 @@ function fresh(progress, levelIndex) {
       pounce: 0,
       pounceCd: 0,
       food: 0,
+      belly: 0,
+      shield: 0,
+      shieldGot: false,
       grapple: null,
       mantle: null,
       cling: null,
@@ -744,6 +749,7 @@ function attackBox(player) {
 
 function shoo(state, enemy) {
   enemy.alive = false;
+  enemy.dive = null;
   enemy.flee = 1;
   enemy.vy = -220;
   enemy.vx = playerDirAway(state.player, enemy) * 180;
@@ -791,6 +797,15 @@ function hurt(state, knock) {
     return;
   }
   if (player.ride || player.invuln > 0) return;
+  if (player.shield > 0) {
+    player.shield = 0;
+    player.invuln = 1.15;
+    state.shake = 4;
+    state.banner = "The purr shield took that.";
+    state.bannerT = 1.2;
+    audio.blip(520, 0.08, 0.04);
+    return;
+  }
   player.health -= 1;
   state.shake = 7;
   audio.sting("music-hurt");
@@ -851,6 +866,70 @@ function updateFish(state, dt) {
   }
 }
 
+function steerBird(state, enemy, dt) {
+  const player = state.player;
+  enemy.perchX = enemy.perchX == null ? enemy.x : enemy.perchX;
+  enemy.perchY = enemy.perchY == null ? enemy.home || enemy.y : enemy.perchY;
+  const screen = Math.max(640, view && view.width ? view.width / (state.dpr || 1) : 800);
+  const ahead = enemy.perchX - player.x;
+  const passed = player.x > enemy.perchX - 16;
+  if (passed || (enemy.dive && enemy.x < player.x + 6)) {
+    enemy.dive = null;
+    enemy.diveT = 0;
+    enemy.gone = true;
+    enemy.wait = enemy.t + 4;
+  }
+  if (enemy.gone) {
+    enemy.x += 110 * dt;
+    enemy.y += (enemy.perchY - 24 - enemy.y) * Math.min(1, dt * 3);
+    return;
+  }
+  const lead = Math.min(420, screen * 0.5);
+  if (!enemy.dive && !enemy.gone && ahead < lead && ahead > 150 && enemy.t > (enemy.wait || 0)) {
+    enemy.dive = "warn";
+    enemy.warn = 0.7;
+    enemy.diveT = 0;
+    audio.tweet();
+  }
+  if (enemy.dive === "warn") {
+    enemy.warn -= dt;
+    enemy.x = enemy.perchX + Math.sin(enemy.t * 36) * 4;
+    enemy.y = enemy.perchY + Math.sin(enemy.t * 28) * 3;
+    if (ahead < 80) {
+      enemy.dive = null;
+      enemy.gone = true;
+    } else if (enemy.warn <= 0) enemy.dive = "go";
+  } else if (enemy.dive === "go") {
+    enemy.diveT = (enemy.diveT || 0) + dt;
+    const t = enemy.diveT / 0.82;
+    if (t >= 1 || ahead < 36) {
+      enemy.dive = null;
+      enemy.diveT = 0;
+      enemy.wait = enemy.t + 2.4;
+      if (ahead < 36) enemy.gone = true;
+    } else {
+      const lead = Math.max(player.x + 72, Math.min(enemy.perchX - 12, player.x + Math.max(90, (player.vx || 0) * 0.45)));
+      enemy.x = enemy.perchX + (lead - enemy.perchX) * Math.sin(Math.min(1, t) * Math.PI * 0.55);
+      enemy.y = enemy.perchY + Math.sin(t * Math.PI) * Math.min(160, Math.max(70, GROUND - 90 - enemy.perchY));
+      enemy.x = Math.max(enemy.x, player.x + 24);
+      if (enemy.x < player.x + 16) {
+        enemy.dive = null;
+        enemy.diveT = 0;
+        enemy.gone = true;
+      }
+    }
+  } else {
+    enemy.x = enemy.perchX + Math.sin(enemy.t * 1.3) * 8;
+    enemy.y = enemy.perchY + Math.sin(enemy.t * 2.2) * 6;
+  }
+  if ((enemy.dive === "warn" || enemy.dive === "go") && enemy.x < player.x + 8) {
+    enemy.dive = null;
+    enemy.diveT = 0;
+    enemy.gone = true;
+    enemy.x = Math.max(enemy.x, player.x + 16);
+  }
+}
+
 function cue(enemy, dt, fn) {
   enemy.voice = (enemy.voice || 0) - dt;
   if (enemy.voice > 0) return;
@@ -863,6 +942,7 @@ function updateEnemies(state, dt) {
   let nearest = 9999;
   for (const enemy of state.level.enemies) {
     if (enemy.flee) {
+      enemy.dive = null;
       enemy.flee -= dt;
       enemy.x += enemy.vx * dt;
       enemy.y += enemy.vy * dt;
@@ -895,30 +975,7 @@ function updateEnemies(state, dt) {
       enemy.y = home + Math.abs(Math.sin(enemy.t * 14)) * -6;
       if (Math.abs(player.x - enemy.x) < 200) cue(enemy, dt, () => audio.squeak());
     } else if (enemy.kind === "bird") {
-      enemy.baseY = enemy.baseY || home;
-      const dx = player.x - enemy.x;
-      if (!enemy.dive && Math.abs(dx) < 170 && Math.abs(dx) > 36 && enemy.t > (enemy.wait || 0)) {
-        enemy.dive = "warn";
-        enemy.warn = 0.48;
-        enemy.tx = player.x + 36;
-        audio.tweet();
-      }
-      if (enemy.dive === "warn") {
-        enemy.warn -= dt;
-        enemy.y = enemy.baseY + Math.sin(enemy.t * 22) * 5;
-        if (enemy.warn <= 0) enemy.dive = "go";
-      } else if (enemy.dive === "go") {
-        enemy.y += 260 * dt;
-        enemy.x += (enemy.tx - enemy.x) * 3 * dt;
-        if (enemy.y > GROUND - 36) {
-          enemy.dive = null;
-          enemy.y = enemy.baseY;
-          enemy.wait = enemy.t + 2.4;
-        }
-      } else {
-        enemy.x += Math.sin(enemy.t * 1.3) * 22 * dt;
-        enemy.y = enemy.baseY + Math.sin(enemy.t * 2.1) * 14;
-      }
+      steerBird(state, enemy, dt);
     } else if (enemy.kind === "squirrel") {
       enemy.dir = enemy.dir || 1;
       enemy.x += enemy.dir * 70 * dt;
@@ -964,7 +1021,8 @@ function updateEnemies(state, dt) {
           enemy.charge = enemy.kind === "rooster" ? 0.7 : 0.42;
         }
       } else {
-        const speed = enemy.kind === "rooster" ? 145 : 108;
+        const fed = player.food > 0 && enemy.kind === "rooster";
+        const speed = (enemy.kind === "rooster" ? 145 : 108) * (fed ? 0.6 : 1);
         enemy.x += enemy.dir * speed * dt;
         enemy.charge -= dt;
         if (enemy.charge <= 0) enemy.phase = "strut";
@@ -984,13 +1042,13 @@ function updateEnemies(state, dt) {
     };
     const stomp = player.vy > 90 && player.y + PH < enemy.y + 10 && rectsOverlap({ x: player.x, y: player.y + PH - 12, w: PW, h: 16 }, box);
     if (stomp || (player.pounce > 0 && rectsOverlap(lunge, box))) {
-      enemy.hp = player.food > 0 ? 0 : (enemy.hp || 1) - 1;
+      enemy.hp = player.food > 0 ? 0 : (player.belly > 0 && enemy.kind === "rooster" ? (enemy.hp || 1) - 2 : (enemy.hp || 1) - 1);
       player.vy = -300;
       if (enemy.hp <= 0) shoo(state, enemy);
       continue;
     }
     if (player.swipeHit && rectsOverlap(attackBox(player), box)) {
-      enemy.hp = player.food > 0 ? 0 : (enemy.hp || 1) - 1;
+      enemy.hp = player.food > 0 ? 0 : (player.belly > 0 && enemy.kind === "rooster" ? (enemy.hp || 1) - 2 : (enemy.hp || 1) - 1);
       if (enemy.hp <= 0) shoo(state, enemy);
       else {
         enemy.stun = 0.6;
@@ -1003,6 +1061,11 @@ function updateEnemies(state, dt) {
     }
     if (enemy.stun > 0) continue;
     if (player.invuln <= 0 && rectsOverlap(body(player), box)) hurt(state, enemy.x < player.x ? 180 : -180);
+    if (enemy.kind === "bird" && (enemy.dive === "warn" || enemy.dive === "go") && enemy.x < player.x) {
+      enemy.dive = null;
+      enemy.diveT = 0;
+      enemy.gone = true;
+    }
   }
   state.tension = nearest < 240 ? 1 - nearest / 240 : 0;
   state.shots = state.shots.filter((shot) => {
@@ -1110,9 +1173,17 @@ function finish(state) {
   state.won = true;
   state.mode = "complete";
   const ratio = state.fishGot / Math.max(1, state.level.fishValue);
-  state.stars = ratio >= 0.9 ? 3 : ratio >= 0.5 ? 2 : 1;
+  const cans = state.level.cans || [];
+  const filled = cans.filter((can) => can.got).length;
+  const fullBelly = cans.length > 0 && filled >= cans.length;
+  const most = ratio >= 0.85;
+  state.stars = fullBelly && most ? 3 : (fullBelly || most || filled >= 2 || ratio >= 0.55) ? 2 : 1;
   const prev = state.progress.stars[state.level.id] || 0;
   state.progress.stars[state.level.id] = Math.max(prev, state.stars);
+  const earned = Object.values(state.progress.stars).reduce((sum, n) => sum + n, 0);
+  state.progress.owned = state.progress.owned || {};
+  if (earned >= 3) state.progress.owned.collar = true;
+  if (earned >= 6) state.progress.owned.hat = true;
   state.progress.bestFish[state.level.id] = Math.max(state.progress.bestFish[state.level.id] || 0, state.fishGot);
   state.progress.unlocked = Math.max(state.progress.unlocked, state.levelIndex + 2);
   if (state.level.rod) state.progress.rod = true;
@@ -1208,7 +1279,7 @@ function policy(state) {
   const needJump = player.onGround && (!supported || wall || hopper);
   const holdJump = !player.onGround && player.vy < 0;
   const rising = state.level.solids.some((block) => block.kind !== "pond" && block.x > player.x + 10 && block.x < player.x + 150 && block.y < feet - 24);
-  const air = state.levelIndex >= 1 && !player.onGround && player.airJump && player.vy > 40 && rising;
+  const air = !player.cling && state.levelIndex >= 1 && !player.onGround && player.airJump && player.vy > 40 && rising;
   return {
     right: true,
     left: false,
@@ -1420,6 +1491,16 @@ function drawFish(g, fish, time) {
   g.beginPath();
   g.arc(6, -1, 1.3, 0, Math.PI * 2);
   g.fill();
+  if (fish.enemy) {
+    g.fillStyle = fish.golden ? "#e0a040" : "#6ec0e4";
+    g.beginPath();
+    g.moveTo(-1, -6);
+    g.quadraticCurveTo(3, -13, 7, -5);
+    g.fill();
+    g.beginPath();
+    g.ellipse(-1, 4, 5, 2.2, 0.5, 0, Math.PI * 2);
+    g.fill();
+  }
   if (!fish.enemy) {
     g.save();
     g.rotate(time * 3 + (fish.phase || 0));
@@ -1430,118 +1511,165 @@ function drawFish(g, fish, time) {
   g.restore();
 }
 
+function softBody(g, color) {
+  g.save();
+  g.strokeStyle = color;
+  g.globalAlpha = 0.4;
+  g.lineWidth = 1;
+  g.lineJoin = "round";
+  g.stroke();
+  g.restore();
+}
+
+function limb(g, x, y, phase, color, foot, len = 9) {
+  const swing = Math.sin(phase) * 4.5;
+  g.strokeStyle = color;
+  g.lineWidth = 1.35;
+  g.lineCap = "round";
+  g.beginPath();
+  g.moveTo(x, y);
+  g.quadraticCurveTo(x + swing * 0.4, y + len * 0.45, x + swing, y + len);
+  g.stroke();
+  g.fillStyle = foot;
+  g.beginPath();
+  g.ellipse(x + swing, y + len + 1, 2.3, 1.35, swing * 0.04, 0, Math.PI * 2);
+  g.fill();
+}
+
 function drawEnemy(g, enemy, time) {
   if (enemy.alive === false && !enemy.flee) return;
   g.save();
   g.globalAlpha = enemy.flee ? Math.max(0, enemy.flee) : 1;
   g.translate(enemy.x, enemy.y);
-  g.shadowColor = "rgba(28,16,10,0.4)";
-  g.shadowBlur = 8;
-  g.shadowOffsetY = 3;
-  if (enemy.kind !== "bird") g.scale(enemy.kind === "rooster" ? 1.95 : 1.8, enemy.kind === "rooster" ? 1.95 : 1.8);
-  g.lineJoin = "round";
-  g.lineWidth = 2;
-  g.strokeStyle = "#1c1916";
+  if (enemy.kind !== "bird") g.scale(enemy.kind === "rooster" ? 1.9 : 1.8, enemy.kind === "rooster" ? 1.9 : 1.8);
+  const step = (enemy.t || time) * (Math.abs(enemy.dir || 1) ? 13 : 8);
+  const face = enemy.dir === -1 ? -1 : 1;
   if (enemy.kind === "mouse") {
-    g.fillStyle = "#d8b89a";
+    g.save();
+    g.scale(face, 1);
+    limb(g, -6, 5, step, "#c4a07e", "#e7a0b0", 8);
+    limb(g, -1, 6, step + Math.PI, "#c4a07e", "#e7a0b0", 8);
+    limb(g, 4, 5, step + 1.2, "#c4a07e", "#e7a0b0", 7);
+    limb(g, 8, 6, step + Math.PI + 1.2, "#c4a07e", "#e7a0b0", 7);
+    g.fillStyle = "#c9a184";
     g.beginPath();
-    g.ellipse(0, 1, 13, 7, 0, 0, Math.PI * 2);
+    g.ellipse(0, 1, 14, 8, 0, 0, Math.PI * 2);
     g.fill();
-    g.stroke();
-    g.fillStyle = "#f3d2c6";
+    softBody(g, "#a88468");
+    g.fillStyle = "#f6e4d8";
     g.beginPath();
-    g.ellipse(6, 2, 5, 3.4, 0, 0, Math.PI * 2);
+    g.ellipse(5, 3, 6, 4, 0, 0, Math.PI * 2);
     g.fill();
-    g.fillStyle = "#e7a090";
+    g.fillStyle = "#f3c2cc";
     g.beginPath();
-    g.arc(9, -3, 3.1, 0, Math.PI * 2);
-    g.arc(4, -4, 2.4, 0, Math.PI * 2);
+    g.ellipse(10, -4, 3.2, 4.2, 0.2, 0, Math.PI * 2);
+    g.ellipse(5, -5, 2.4, 3.4, -0.2, 0, Math.PI * 2);
     g.fill();
-    g.strokeStyle = "#c47a8a";
-    g.lineWidth = 1.4;
+    g.strokeStyle = "#b88874";
+    g.lineWidth = 1.1;
     g.beginPath();
-    g.moveTo(-12, 2);
-    g.quadraticCurveTo(-20, 8, -16, -4);
+    g.moveTo(-12, 1);
+    g.quadraticCurveTo(-24, 10, -30, -2);
     g.stroke();
     g.fillStyle = "#2a211c";
     g.beginPath();
-    g.arc(8, 0, 1, 0, Math.PI * 2);
+    g.arc(9, -1, 1.15, 0, Math.PI * 2);
     g.fill();
+    g.fillStyle = "rgba(255,255,255,0.55)";
+    g.beginPath();
+    g.ellipse(2, -2, 4, 1.6, -0.4, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
   } else if (enemy.kind === "bird") {
     drawBird(g, enemy, time);
   } else if (enemy.kind === "squirrel") {
-    g.fillStyle = "#d4843c";
-    g.beginPath();
-    g.ellipse(0, 2, 12, 8, 0, 0, Math.PI * 2);
-    g.fill();
-    g.stroke();
-    g.fillStyle = "#b86a28";
-    g.beginPath();
-    g.moveTo(-6, -2);
-    g.quadraticCurveTo(-16, -18, -8, 6);
-    g.quadraticCurveTo(-18, 8, -4, 8);
-    g.fill();
-    g.stroke();
-    g.fillStyle = "#f2c9a0";
-    g.beginPath();
-    g.ellipse(4, 4, 5, 3, 0, 0, Math.PI * 2);
-    g.fill();
+    g.save();
+    g.scale(face, 1);
+    limb(g, -5, 6, step, "#b86a28", "#f2c9a0", 8);
+    limb(g, 0, 7, step + Math.PI, "#b86a28", "#f2c9a0", 8);
+    limb(g, 5, 6, step + 0.8, "#b86a28", "#f2c9a0", 7);
+    limb(g, 9, 7, step + Math.PI + 0.8, "#b86a28", "#f2c9a0", 7);
     g.fillStyle = "#e39a55";
     g.beginPath();
-    g.ellipse(-12, -6, 7, 11, -0.7, 0, Math.PI * 2);
+    g.ellipse(-14, -2, 8, 12, -0.8, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#f2c9a0";
+    g.beginPath();
+    g.ellipse(-15, 2, 4, 7, -0.7, 0, Math.PI * 2);
+    g.fill();
+    softBody(g, "#c47a34");
+    g.fillStyle = "#d4843c";
+    g.beginPath();
+    g.ellipse(1, 2, 13, 8, 0, 0, Math.PI * 2);
+    g.fill();
+    softBody(g, "#b86a28");
+    g.fillStyle = "#f6d7b4";
+    g.beginPath();
+    g.ellipse(5, 4, 6, 3.4, 0, 0, Math.PI * 2);
     g.fill();
     g.fillStyle = "#1d2430";
     g.beginPath();
-    g.arc(6, 0, 1.1, 0, Math.PI * 2);
+    g.arc(8, 0, 1.15, 0, Math.PI * 2);
     g.fill();
+    g.restore();
   } else if (enemy.kind === "fish") {
     drawFish(g, { x: 0, y: 0, golden: false, phase: enemy.t || 0, got: false, enemy: true }, time);
   } else if (enemy.kind === "chicken" || enemy.kind === "rooster") {
     const rooster = enemy.kind === "rooster";
+    const stride = step * (enemy.phase === "charge" ? 1.4 : 0.8);
+    limb(g, -3, 8, stride, "#e2b84a", "#f2c14b", 11);
+    limb(g, 4, 8, stride + Math.PI, "#e2b84a", "#f2c14b", 11);
+    g.strokeStyle = "#e2b84a";
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(-3 + Math.sin(stride) * 4, 20);
+    g.lineTo(-6 + Math.sin(stride) * 4, 22);
+    g.moveTo(-3 + Math.sin(stride) * 4, 20);
+    g.lineTo(-1 + Math.sin(stride) * 4, 22);
+    g.moveTo(4 + Math.sin(stride + Math.PI) * 4, 20);
+    g.lineTo(7 + Math.sin(stride + Math.PI) * 4, 22);
+    g.stroke();
+    if (rooster) {
+      g.fillStyle = "#c46a22";
+      g.beginPath();
+      g.moveTo(-8, -2);
+      g.quadraticCurveTo(-22, -16, -12, 4);
+      g.quadraticCurveTo(-18, -6, -6, 2);
+      g.fill();
+      softBody(g, "#a85a18");
+    }
     g.fillStyle = rooster ? "#f0a03a" : "#f7f1e6";
     g.beginPath();
     g.ellipse(0, 2, rooster ? 16 : 14, 10, 0, 0, Math.PI * 2);
     g.fill();
-    g.stroke();
+    softBody(g, rooster ? "#d4843c" : "#e2d3c4");
     g.save();
-    g.translate(-2, 0);
-    g.rotate(Math.sin(time * 10) * 0.4);
-    g.fillStyle = rooster ? "#e08a28" : "#f4efe4";
+    g.translate(-4, -1);
+    g.rotate(Math.sin(time * 8 + (enemy.x || 0)) * 0.35);
+    g.fillStyle = rooster ? "#e08a28" : "#fff8f2";
     g.beginPath();
-    g.ellipse(-2, -4, 8, 4, -0.4, 0, Math.PI * 2);
+    g.ellipse(0, -2, 9, 4.5, -0.5, 0, Math.PI * 2);
     g.fill();
-    g.stroke();
     g.restore();
-    g.fillStyle = "#f4efe4";
+    g.fillStyle = "#fff6ee";
     g.beginPath();
-    g.arc(10, -2, 6, 0, Math.PI * 2);
+    g.arc(11, -3, 6.2, 0, Math.PI * 2);
     g.fill();
+    softBody(g, "#ead8c8");
     g.fillStyle = "#e23b3b";
     g.beginPath();
-    g.ellipse(10, -8, 3.2, rooster ? 6 : 3.4, 0, 0, Math.PI * 2);
+    g.ellipse(12, -9, 3.4, rooster ? 6.5 : 3.6, 0.2, 0, Math.PI * 2);
     g.fill();
     g.fillStyle = "#f2c14b";
     g.beginPath();
-    g.moveTo(15, -2);
-    g.lineTo(20, 0);
-    g.lineTo(15, 2);
+    g.moveTo(16, -3);
+    g.lineTo(22, -1);
+    g.lineTo(16, 1);
     g.fill();
-    if (rooster) {
-      g.strokeStyle = "#8a3d2a";
-      g.lineWidth = 2;
-      g.beginPath();
-      g.moveTo(-12, 0);
-      g.quadraticCurveTo(-20, -12, -14, -16);
-      g.stroke();
-    }
-    g.strokeStyle = "#e0a050";
-    g.lineWidth = 1.5;
+    g.fillStyle = "#2a211c";
     g.beginPath();
-    g.moveTo(-2, 10);
-    g.lineTo(-4, 14);
-    g.moveTo(4, 10);
-    g.lineTo(6, 14);
-    g.stroke();
+    g.arc(13, -4, 1.1, 0, Math.PI * 2);
+    g.fill();
   }
   g.restore();
 }
@@ -1632,8 +1760,39 @@ function drawScenery(g, level, time, camX, viewW) {
   }
 }
 
-function drawOwner(g, owner, time, theme, reunion) {
-  drawLady(g, owner.x, GROUND, time, theme, reunion ? "reunion" : "idle");
+function drawWear(g, player) {
+  const collar = progress.cat && progress.cat.collar;
+  const hat = progress.cat && progress.cat.hat;
+  if (!collar && !hat) return;
+  g.save();
+  g.translate(player.x + PW / 2, player.y);
+  if (hat) {
+    g.fillStyle = "#3d6b8a";
+    g.fillRect(-7, 0, 14, 8);
+    g.beginPath();
+    g.ellipse(0, 8, 12, 3, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#f2c14b";
+    g.beginPath();
+    g.arc(0, 3, 1.5, 0, Math.PI * 2);
+    g.fill();
+  }
+  if (collar) {
+    g.strokeStyle = "#e23b55";
+    g.lineWidth = 2;
+    g.beginPath();
+    g.ellipse(0, 22, 10, 3.6, 0, 0, Math.PI * 2);
+    g.stroke();
+    g.fillStyle = "#f2c14b";
+    g.beginPath();
+    g.arc(8, 21, 1.7, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.restore();
+}
+
+function drawOwner(g, owner, time, theme, reunion, stars) {
+  drawLady(g, owner.x, GROUND, time, theme, reunion ? (stars >= 3 ? "feast" : "reunion") : "idle");
 }
 
 function aimCamera(state, viewW, viewH) {
@@ -1730,12 +1889,24 @@ function drawWorld(state) {
   for (const mark of level.checkpoints || []) drawCheckpoint(ctx, mark, state.time);
   for (const fish of level.fish) drawFish(ctx, fish, state.time);
   for (const enemy of level.enemies) {
-    if (enemy.dive === "warn") {
+    if (enemy.kind !== "bird") continue;
+    const px = enemy.perchX == null ? enemy.x : enemy.perchX;
+    const py = enemy.perchY == null ? enemy.y : enemy.perchY;
+    ctx.strokeStyle = "#c4925a";
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(px - 34, py + 22);
+    ctx.quadraticCurveTo(px, py + 12, px + 36, py + 20);
+    ctx.stroke();
+  }
+  for (const enemy of level.enemies) {
+    if (enemy.dive === "warn" || enemy.dive === "go") {
       ctx.save();
-      ctx.globalAlpha = 0.35 + Math.sin(state.time * 16) * 0.1;
+      ctx.globalAlpha = 0.28 + Math.sin(state.time * 16) * 0.08;
       ctx.fillStyle = "#3a2418";
       ctx.beginPath();
-      ctx.ellipse(enemy.tx || enemy.x, GROUND + 2, 16, 5, 0, 0, Math.PI * 2);
+      ctx.ellipse(enemy.x, GROUND + 2, 18, 5, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
@@ -1767,7 +1938,7 @@ function drawWorld(state) {
   drawHazards(ctx, state);
   drawScenery(ctx, level, state.time, state.camX, w / state.dpr);
   const reunion = state.won || Math.abs(state.player.x - level.owner.x) < 120;
-  drawOwner(ctx, level.owner, state.time, level.theme, reunion);
+  drawOwner(ctx, level.owner, state.time, level.theme, reunion, state.stars || 0);
   drawCatShadow(ctx, state);
   if (state.player.ride) {
     ctx.save();
@@ -1780,6 +1951,16 @@ function drawWorld(state) {
     ctx.stroke();
     ctx.restore();
   }
+  if (state.player.shield > 0) {
+    ctx.save();
+    ctx.translate(state.player.x + 16, state.player.y + 30);
+    ctx.globalAlpha = 0.22 + Math.sin(state.time * 5) * 0.08;
+    ctx.fillStyle = "#f7c6d8";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 30, 36, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
   if (state.player.food > 0) {
     ctx.save();
     ctx.translate(state.player.x + 16, state.player.y + 30);
@@ -1790,7 +1971,10 @@ function drawWorld(state) {
     ctx.fill();
     ctx.restore();
   }
-  if (state.player.invuln <= 0 || Math.sin(state.time * 40) > 0) paintCat(ctx, state.cat, state.time);
+  if (state.player.invuln <= 0 || Math.sin(state.time * 40) > 0) {
+    paintCat(ctx, state.cat, state.time);
+    drawWear(ctx, state.player);
+  }
   for (const bit of state.particles) {
     ctx.globalAlpha = Math.max(0, bit.life / bit.max);
     ctx.fillStyle = bit.color;
@@ -1898,7 +2082,16 @@ function showComplete(current) {
   document.querySelector("#complete-kicker").textContent = current.level.name;
   const stars = "★★★".slice(0, current.stars) + "☆☆☆".slice(current.stars);
   document.querySelector("#stars").textContent = stars;
-  document.querySelector("#complete-copy").textContent = `Fish ${current.fishGot} / ${current.level.fishValue}. ${current.stars === 3 ? "Every last one." : "A few still glint in the room."}`;
+  const cans = current.level.cans || [];
+  const filled = cans.filter((can) => can.got).length;
+  const gift = current.stars >= 3
+    ? "She purrs and holds up a treat dish."
+    : current.progress.owned && current.progress.owned.hat
+      ? "A hat is waiting in the wardrobe."
+      : current.progress.owned && current.progress.owned.collar
+        ? "A collar is yours to wear."
+        : "She is glad you came home.";
+  document.querySelector("#complete-copy").textContent = `Fish ${current.fishGot} / ${current.level.fishValue}. Belly ${filled}/${cans.length || 3}. ${gift}`;
   document.querySelector("#next-level").hidden = current.levelIndex >= LEVELS.length - 1;
   show("complete");
 }
@@ -1907,6 +2100,30 @@ function paintHud() {
   if (!state) return;
   hearts.textContent = "♥".repeat(Math.max(0, state.player.health)) + "♡".repeat(Math.max(0, 3 - state.player.health));
   fishCount.textContent = `${state.fishGot}/${state.level.fishValue}`;
+  const belly = document.querySelector("#belly");
+  if (belly) {
+    const pen = belly.getContext("2d");
+    const fill = Math.max(0, Math.min(3, state.player.belly || 0)) / 3;
+    pen.clearRect(0, 0, 36, 36);
+    pen.fillStyle = "#fff6ee";
+    pen.beginPath();
+    pen.ellipse(18, 22, 12, 8, 0, 0, Math.PI * 2);
+    pen.fill();
+    pen.save();
+    pen.beginPath();
+    pen.rect(6, 22 - fill * 12, 24, 16);
+    pen.clip();
+    pen.fillStyle = state.player.shield > 0 ? "#f2c14b" : "#e07a3d";
+    pen.beginPath();
+    pen.ellipse(18, 22, 12, 8, 0, 0, Math.PI * 2);
+    pen.fill();
+    pen.restore();
+    pen.strokeStyle = "#c47a5a";
+    pen.lineWidth = 1.4;
+    pen.beginPath();
+    pen.ellipse(18, 22, 12, 8, 0, 0, Math.PI * 2);
+    pen.stroke();
+  }
   const combo = document.querySelector("#combo");
   if (combo) {
     combo.hidden = (state.comboT || 0) <= 0;
@@ -2066,7 +2283,7 @@ function drawReunion() {
   g.clearRect(0, 0, canvas.width, canvas.height);
   g.fillStyle = "#fff6ee";
   g.fillRect(0, 0, canvas.width, canvas.height);
-  drawLady(g, 360, 250, time, theme, "reunion");
+  drawLady(g, 360, 250, time, theme, state && state.stars >= 3 ? "feast" : "reunion");
   const cat = makeCat(progress.cat);
   cat.x = 250;
   cat.groundY = 248;
@@ -2173,7 +2390,7 @@ function boot() {
     location.href = "pet/index.html";
   });
   document.querySelector("#begin").addEventListener("click", () => {
-    progress.cat = readCat();
+    progress.cat = { ...progress.cat, ...readCat() };
     saveProgress(progress);
     startLevel(0);
   });
@@ -2312,6 +2529,33 @@ function fillSelect() {
     return button;
   }));
   const eyes = document.querySelector("#eyes");
+  const wear = document.querySelector("#wear");
+  if (wear) {
+    const owned = progress.owned || {};
+    const gifts = [];
+    if (owned.collar) gifts.push(["collar", "Collar"]);
+    if (owned.hat) gifts.push(["hat", "Hat"]);
+    if (!gifts.length) {
+      const note = document.createElement("button");
+      note.type = "button";
+      note.disabled = true;
+      note.textContent = "Stars unlock gifts";
+      wear.replaceChildren(note);
+    } else {
+      wear.replaceChildren(...gifts.map(([id, label]) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.setAttribute("aria-pressed", progress.cat[id] ? "true" : "false");
+        button.addEventListener("click", () => {
+          progress.cat[id] = !progress.cat[id];
+          button.setAttribute("aria-pressed", progress.cat[id] ? "true" : "false");
+          saveProgress(progress);
+        });
+        return button;
+      }));
+    }
+  }
   eyes.replaceChildren(...EYE_ORDER.map((id) => {
     const button = document.createElement("button");
     button.className = "swatch";
@@ -2809,6 +3053,58 @@ function fishAudit() {
   }));
 }
 
+function birdDiveTest() {
+  const bad = [];
+  for (const id of ["living", "porch", "yard", "neighbor"]) {
+    const index = LEVELS.findIndex((level) => level.id === id);
+    const trial = fresh(quietProgress(), index);
+    trial.mode = "play";
+    let frames = 0;
+    while (frames < 60 * 150 && !trial.won && trial.player.health > 0) {
+      step(trial, 1 / 60, policy(trial));
+      frames += 1;
+      for (const enemy of trial.level.enemies) {
+        if (enemy.kind !== "bird") continue;
+        if ((enemy.dive === "warn" || enemy.dive === "go") && enemy.x < trial.player.x - 1) {
+          bad.push({ id, frame: frames, bird: Math.round(enemy.x), cat: Math.round(trial.player.x), dive: enemy.dive });
+        }
+      }
+    }
+  }
+  if (bad.length) throw new Error(`bird dived from behind ${JSON.stringify(bad.slice(0, 3))}`);
+  return { ok: true, levels: 4 };
+}
+
+function enemyZoom() {
+  document.querySelector("#overlay").hidden = true;
+  document.querySelector("#hud").hidden = true;
+  document.querySelector("#pad").hidden = true;
+  document.querySelector("#sound-prompt").hidden = true;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const w = view.width;
+  const h = view.height;
+  ctx.fillStyle = "#f6efe6";
+  ctx.fillRect(0, 0, w, h);
+  const kinds = ["mouse", "squirrel", "chicken", "rooster", "fish", "bird"];
+  kinds.forEach((kind, index) => {
+    const x = (index + 0.5) * (w / kinds.length);
+    ctx.save();
+    ctx.translate(x, h * 0.32);
+    ctx.scale(2.15, 2.15);
+    drawEnemy(ctx, { kind, species: kind === "bird" ? "jay" : "jay", x: 0, y: 0, alive: true, t: 0.05, dir: 1, phase: "strut", home: 0 }, 0.05);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(x, h * 0.68);
+    ctx.scale(2.15, 2.15);
+    drawEnemy(ctx, { kind, species: "robin", x: 0, y: 0, alive: true, t: 1.15, dir: 1, phase: "charge", home: 0 }, 1.15);
+    ctx.restore();
+    ctx.fillStyle = "#3a2a22";
+    ctx.font = "700 16px 'Avenir Next', 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`${kind}  stand / step`, x, h * 0.5);
+  });
+}
+
 function birdZoom() {
   document.querySelector("#overlay").hidden = true;
   document.querySelector("#hud").hidden = true;
@@ -2887,6 +3183,8 @@ window.sunbeam = {
   tapChoice,
   rideTest,
   fishAudit,
+  birdDiveTest,
+  enemyZoom,
   birdZoom,
   audit,
   LEVELS,

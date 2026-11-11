@@ -796,7 +796,8 @@ export function drawMotion(g, level, time, anchors) {
 }
 
 export function drawLady(g, x, y, time, theme, mode) {
-  const reunion = mode === "reunion";
+  const reunion = mode === "reunion" || mode === "feast";
+  const feast = mode === "feast";
   const cardigan = CARDIGAN[theme] || CARDIGAN.living;
   const apron = theme === "yard" || theme === "neighbor";
   const rock = reunion ? 0 : Math.sin(time * 1.5) * 2;
@@ -901,6 +902,20 @@ export function drawLady(g, x, y, time, theme, mode) {
   g.stroke();
   hand(g, reunion ? -28 : -26, reunion ? 20 : 10 + wave * 6, skin);
   hand(g, reunion ? 22 : 24, reunion ? 22 : 18, skin);
+  if (feast) {
+    g.fillStyle = "#fffaf4";
+    g.beginPath();
+    g.ellipse(24, 30, 13, 5, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#e23b3b";
+    g.beginPath();
+    g.arc(24, 26, 4.2, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#f2c14b";
+    g.beginPath();
+    g.arc(29, 27, 2.4, 0, Math.PI * 2);
+    g.fill();
+  }
 
   g.fillStyle = "#e7e4df";
   g.beginPath();
@@ -941,7 +956,8 @@ export function drawLady(g, x, y, time, theme, mode) {
   g.restore();
 
   if (reunion) {
-    for (let i = 0; i < 4; i++) {
+    const hearts = feast ? 7 : 4;
+    for (let i = 0; i < hearts; i++) {
       const rise = ((time * 0.6 + i * 0.25) % 1);
       g.globalAlpha = 1 - rise;
       g.fillStyle = "#e07a8c";

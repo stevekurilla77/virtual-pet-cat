@@ -42,7 +42,12 @@ export function dressLevel(level, index) {
   });
   let bird = 0;
   for (const enemy of level.enemies) {
-    if (enemy.kind === "bird") enemy.species = SPECIES[index][bird++] || SPECIES[index][0];
+    if (enemy.kind === "bird") {
+      enemy.species = SPECIES[index][bird++] || SPECIES[index][0];
+      enemy.perchX = enemy.x;
+      enemy.perchY = enemy.y;
+      enemy.home = enemy.y;
+    }
     if (enemy.kind === "rooster") enemy.hp = 3;
   }
   const door = level.hazards.find((hazard) => hazard.kind === "flap");
@@ -66,13 +71,15 @@ const ROUTE = [
 ];
 
 function addRoutes(level, index) {
-  const floors = level.solids.filter((block) => block.kind === "floor" && block.w > 760 && block.x > 700 && block.x + block.w < level.owner.x - 180);
-  const floor = floors[1] || floors[0];
+  const goal = (level.owner.x || level.width || 4000) * 0.42;
+  const floors = level.solids.filter((block) => block.kind === "floor" && block.w > 640 && block.x < goal && block.x + block.w > goal + 260);
+  floors.sort((a, b) => Math.abs(a.x + a.w * 0.5 - goal) - Math.abs(b.x + b.w * 0.5 - goal));
+  const floor = floors[0] || level.solids.find((block) => block.kind === "floor" && block.w > 700 && block.x + block.w > goal);
   if (!floor) {
     level.climbs = [];
     return;
   }
-  const base = floor.x + Math.min(220, floor.w * 0.28);
+  const base = Math.max(floor.x + 90, Math.min(floor.x + floor.w - 320, goal));
   const tiers = [
     { x: base + 36, y: GROUND - 76, w: 108, kind: "shelf" },
     { x: base + 78, y: GROUND - 148, w: 96, kind: "sill" },
@@ -90,7 +97,11 @@ function addRoutes(level, index) {
     { x: tiers[1].x + 30, y: tiers[1].y - 28 },
     { x: tiers[2].x + 28, y: tiers[2].y - 34, golden: true },
   ];
-  level.cans = [{ x: tiers[2].x + tiers[2].w * 0.62, y: tiers[2].y - 26, got: false }];
+  level.cans = [
+    { x: tiers[2].x + tiers[2].w * 0.58, y: tiers[2].y - 26, got: false },
+    { x: tiers[1].x + tiers[1].w * 0.55, y: tiers[1].y - 24, got: false },
+    { x: tiers[0].x + 48, y: tiers[0].y - 24, got: false },
+  ];
   for (const fish of bonus) {
     level.fish.push({ x: fish.x, y: fish.y, golden: Boolean(fish.golden), phase: fish.x * 0.01, got: false });
   }
@@ -196,8 +207,8 @@ export function updateCans(state, dt, audio) {
       state.canHold = Math.max(state.canHold, 1.05);
       if (!state.foodHint) {
         state.foodHint = true;
-        state.banner = "Wet food!";
-        state.bannerT = 1.6;
+        state.banner = "Wet food fills your belly: stars + a purr shield!";
+        state.bannerT = 2.6;
       }
     }
   }
@@ -208,8 +219,13 @@ export function updateCans(state, dt, audio) {
     if (dx * dx + dy * dy < 64 * 64) {
       can.got = true;
       player.food = 9;
+      player.belly = Math.min(3, (player.belly || 0) + 1);
       state.foodHint = true;
-      state.banner = "Wet food energy.";
+      if (player.belly >= 3 && !player.shieldGot) {
+        player.shield = 1;
+        player.shieldGot = true;
+        state.banner = "A full belly. Purr shield ready.";
+      } else state.banner = "Wet food energy. Your belly is filling.";
       state.bannerT = 1.6;
       audio.chime();
       for (let i = 0; i < 10; i++) {
@@ -986,9 +1002,13 @@ function birdShape(g, draw, fill) {
   draw();
   g.fillStyle = fill;
   g.fill();
-  g.lineWidth = 2;
-  g.strokeStyle = "#1c1916";
+  g.save();
+  g.strokeStyle = fill;
+  g.globalAlpha = 0.45;
+  g.lineWidth = 1;
+  g.lineJoin = "round";
   g.stroke();
+  g.restore();
 }
 
 export function drawBird(g, enemy, time) {
@@ -1082,20 +1102,23 @@ export function drawBird(g, enemy, time) {
     g.lineTo(24, 2);
   }, look.beak);
   if (!diving) {
+    const step = Math.sin(time * 7 + (enemy.x || 0));
     g.strokeStyle = look.mask;
-    g.lineWidth = 2;
+    g.globalAlpha = 0.85;
+    g.lineWidth = 1.15;
+    g.lineCap = "round";
     g.beginPath();
-    g.moveTo(0, 16);
-    g.lineTo(-1, 24);
-    g.lineTo(-6, 26);
-    g.moveTo(2, 24);
-    g.lineTo(4, 26);
-    g.moveTo(8, 16);
-    g.lineTo(9, 24);
-    g.lineTo(14, 26);
-    g.moveTo(11, 24);
-    g.lineTo(8, 26);
+    g.moveTo(1, 15);
+    g.quadraticCurveTo(0, 22, -2 + step, 26);
+    g.moveTo(8, 15);
+    g.quadraticCurveTo(9, 22, 11 - step, 26);
     g.stroke();
+    g.globalAlpha = 1;
+    g.fillStyle = "#e7c9a4";
+    g.beginPath();
+    g.ellipse(-2 + step, 27, 3.2, 1.3, 0, 0, Math.PI * 2);
+    g.ellipse(11 - step, 27, 3.2, 1.3, 0, 0, Math.PI * 2);
+    g.fill();
   }
   if (warn) {
     g.fillStyle = "#1c1916";

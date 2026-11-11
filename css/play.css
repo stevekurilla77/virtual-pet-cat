@@ -383,7 +383,7 @@ input[type="range"] { height: 28px; padding: 0; }
 }
 
 .hearts { display: flex; gap: 4px; font-size: 22px; color: #e15b70; text-shadow: 0 2px 0 rgba(255,255,255,0.45); }
-#food-ring { width: 28px; height: 28px; pointer-events: none; }
+#food-ring, #belly { width: 28px; height: 28px; pointer-events: none; }
 #combo { margin-left: 6px; color: #e2b84a; font-weight: 800; }
 .pills { display: flex; gap: 6px; pointer-events: auto; }
 
