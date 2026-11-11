@@ -406,9 +406,10 @@ input[type="range"] { height: 28px; padding: 0; }
 .cluster.right { right: calc(14px + env(safe-area-inset-right)); }
 
 .padbtn {
-  width: 74px;
-  height: 74px;
-  border-radius: 26px;
+  width: 88px;
+  height: 88px;
+  border-radius: 28px;
+  touch-action: none;
   background: rgba(255, 248, 242, 0.38);
   border: 1px solid rgba(255,255,255,0.55);
   backdrop-filter: blur(10px);

@@ -276,32 +276,51 @@ export class PlayAudio {
   yowl() { this.voice("yowl", 0.74); }
   tweet() { this.play(this.pick("tweet"), { rate: this.vary(), gain: 0.34 }); }
 
-  hum(on, secondsLeft = 10) {
+  stopHum() {
+    if (!this.vacuum) return;
+    try { this.vacuum.src.stop(); } catch (error) { /* already stopped */ }
+    try { this.vacuum.rumble.stop(); } catch (error) { /* already stopped */ }
+    this.vacuum = null;
+  }
+
+  hum(on, secondsLeft = 10, loud = 1) {
     if (!this.ctx) return;
-    if (!on || this.sfxLevel() <= 0) {
-      if (this.vacuum) {
-        try { this.vacuum.osc.stop(); } catch (error) { /* already stopped */ }
-        this.vacuum = null;
-      }
+    if (!on || this.sfxLevel() <= 0 || loud <= 0.02) {
+      this.stopHum();
       return;
     }
     if (!this.vacuum) {
-      const osc = this.ctx.createOscillator();
+      const length = this.ctx.sampleRate * 2;
+      const buffer = this.ctx.createBuffer(1, length, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+      const src = this.ctx.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
       const filter = this.ctx.createBiquadFilter();
-      const gain = this.ctx.createGain();
-      osc.type = "sawtooth";
-      osc.frequency.value = 52;
       filter.type = "lowpass";
-      filter.frequency.value = 160;
-      gain.gain.value = Math.max(0.0001, 0.028 * this.sfxLevel());
-      osc.connect(filter);
-      filter.connect(gain);
+      filter.frequency.value = 420;
+      filter.Q.value = 0.6;
+      const rumble = this.ctx.createOscillator();
+      rumble.type = "sawtooth";
+      rumble.frequency.value = 54;
+      const mix = this.ctx.createGain();
+      const gain = this.ctx.createGain();
+      src.connect(filter);
+      filter.connect(mix);
+      rumble.connect(mix);
+      mix.connect(gain);
       gain.connect(this.sfxBus);
-      osc.start();
-      this.vacuum = { osc, gain };
+      src.start();
+      rumble.start();
+      this.vacuum = { src, rumble, gain, filter };
     }
-    const urgent = secondsLeft < 2;
-    this.vacuum.osc.frequency.setTargetAtTime(urgent ? 74 : 52, this.ctx.currentTime, 0.15);
+    const urgent = secondsLeft < 2.2;
+    const level = Math.max(0.0001, 0.09 * loud * this.sfxLevel());
+    this.vacuum.gain.gain.setTargetAtTime(level, this.ctx.currentTime, 0.08);
+    this.vacuum.rumble.frequency.setTargetAtTime(urgent ? 76 : 54, this.ctx.currentTime, 0.18);
+    this.vacuum.src.playbackRate.setTargetAtTime(urgent ? 1.2 : 1, this.ctx.currentTime, 0.18);
+    this.vacuum.filter.frequency.setTargetAtTime(urgent ? 640 : 420, this.ctx.currentTime, 0.2);
   }
 
   chime() {

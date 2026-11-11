@@ -590,6 +590,7 @@ function movePlayer(state, dt, input) {
     if (doublet && player.pounceCd <= 0 && (pounceTarget(state) || justLeft)) startPounce(state);
     else if (!player.onGround && player.airJump && state.levelIndex >= 1) {
       player.vy = JUMP * 0.88 * (player.food > 0 ? 1.28 : 1);
+      player.jumped = true;
       player.airJump = false;
       player.jumpBuf = 0;
       for (let i = 0; i < 5; i++) {
@@ -606,7 +607,10 @@ function movePlayer(state, dt, input) {
     const feet = player.y + PH;
     const prevFeet = was + PH;
     const overlapX = player.x + PW > block.x + 4 && player.x < block.x + block.w - 4;
-    if (player.vy >= 0 && overlapX && prevFeet <= block.y + 8 && feet >= block.y && feet <= block.y + 28) {
+    const rise = prevFeet - block.y;
+    const smallStep = rise <= 6 && rise >= -8;
+    const fromJump = player.jumped && prevFeet <= block.y + 10;
+    if (player.vy >= 0 && overlapX && feet >= block.y && feet <= block.y + 28 && (smallStep || fromJump)) {
       player.y = block.y - PH;
       player.vy = 0;
       player.onGround = true;
@@ -615,6 +619,7 @@ function movePlayer(state, dt, input) {
   }
   if (player.jumpBuf > 0 && (player.onGround || player.coyote > 0)) {
     player.vy = JUMP * (player.food > 0 ? 1.28 : 1);
+    player.jumped = true;
     player.onGround = false;
     player.coyote = 0;
     player.jumpBuf = 0;
@@ -624,9 +629,11 @@ function movePlayer(state, dt, input) {
   }
   if (player.bounce) {
     player.vy = player.bounce;
+    player.jumped = true;
     player.onGround = false;
     player.bounce = 0;
   }
+  if (player.onGround) player.jumped = false;
   player.wasGround = player.onGround;
   if (player.onGround) player.leftGround = 0;
   else player.leftGround = (player.leftGround || 0) + dt;
@@ -911,6 +918,10 @@ function steerBird(state, enemy, dt) {
       const lead = Math.max(player.x + 72, Math.min(enemy.perchX - 12, player.x + Math.max(90, (player.vx || 0) * 0.45)));
       enemy.x = enemy.perchX + (lead - enemy.perchX) * Math.sin(Math.min(1, t) * Math.PI * 0.55);
       enemy.y = enemy.perchY + Math.sin(t * Math.PI) * Math.min(160, Math.max(70, GROUND - 90 - enemy.perchY));
+      if (enemy.diveT > 0.15 && !enemy.feather) {
+        enemy.feather = true;
+        state.particles.push({ x: enemy.x, y: enemy.y, vx: -20, vy: 16, life: 0.6, max: 0.6, kind: "puff", color: "#f7f4ea" });
+      }
       enemy.x = Math.max(enemy.x, player.x + 24);
       if (enemy.x < player.x + 16) {
         enemy.dive = null;
@@ -966,14 +977,31 @@ function updateEnemies(state, dt) {
       enemy.vx *= 0.9;
     } else if (enemy.kind === "mouse") {
       enemy.dir = enemy.dir || 1;
-      if (enemy.chaser) {
+      if (enemy.hole && !enemy.popped) {
+        enemy.y = home + 16;
+        if (player.x < enemy.x + 30 && Math.abs(player.x - enemy.x) < 190) {
+          enemy.popped = true;
+          enemy.dir = -1;
+          audio.squeak();
+        }
+      } else if (enemy.chaser) {
         const goal = player.x - 120;
         enemy.x += Math.sign(goal - enemy.x || 1) * 128 * dt;
         enemy.x = Math.max(enemy.min, Math.min(enemy.max, enemy.x));
-      } else enemy.x += enemy.dir * 96 * dt;
-      if (enemy.x < enemy.min || enemy.x > enemy.max) enemy.dir *= -1;
-      enemy.y = home + Math.abs(Math.sin(enemy.t * 14)) * -6;
-      if (Math.abs(player.x - enemy.x) < 200) cue(enemy, dt, () => audio.squeak());
+        enemy.y = home + Math.abs(Math.sin(enemy.t * 16)) * -6;
+      } else {
+        const dart = enemy.group ? 150 : 118;
+        enemy.x += enemy.dir * dart * dt;
+        const zig = Math.sin(enemy.t * 3.2) > 0;
+        if (zig !== enemy.zig) {
+          enemy.zig = zig;
+          enemy.dir *= -1;
+        }
+        if (enemy.x < enemy.min || enemy.x > enemy.max) enemy.dir *= -1;
+        enemy.y = home + Math.abs(Math.sin(enemy.t * 16)) * -7;
+        if (Math.abs(player.x - enemy.x) < 180) cue(enemy, dt, () => audio.squeak());
+      }
+      if (enemy.hole && !enemy.popped) continue;
     } else if (enemy.kind === "bird") {
       steerBird(state, enemy, dt);
     } else if (enemy.kind === "squirrel") {
@@ -982,22 +1010,33 @@ function updateEnemies(state, dt) {
       if (enemy.x < enemy.min || enemy.x > enemy.max) enemy.dir *= -1;
       enemy.cool = (enemy.cool == null ? 1.4 : enemy.cool) - dt;
       enemy.wind = Math.max(0, (enemy.wind || 0) - dt);
-      if (enemy.cool <= 0 && Math.abs(player.x - enemy.x) < 320) {
-        enemy.wind = 0.28;
-        enemy.cool = 2.6;
+      const facing = player.x > enemy.x - 20 && player.x < enemy.x + 360;
+      if (enemy.cool <= 0 && facing) {
+        enemy.wind = 0.4;
+        enemy.cool = 2.3;
         audio.chatter();
       }
-      if (enemy.wind > 0 && enemy.wind < 0.04) {
-        const dir = player.x >= enemy.x ? 1 : -1;
-        state.shots.push({ x: enemy.x, y: enemy.y - 4, vx: dir * 150, vy: -120, life: 1.7 });
+      if (enemy.wind > 0 && enemy.wind < 0.05) {
+        const aim = player.x + 16 + Math.max(0, player.vx || 0) * 0.32;
+        state.shots.push({
+          x: enemy.x + 8,
+          y: enemy.y - 8,
+          vx: Math.max(-40, Math.min(210, (aim - enemy.x) * 1.15)),
+          vy: -190,
+          life: 1.7,
+          kind: "acorn",
+        });
         enemy.wind = 0;
       }
     } else if (enemy.kind === "fish") {
-      const leap = Math.sin(enemy.t * 2.2);
-      const rising = leap > 0.2;
-      if (rising && !enemy.up) audio.splash();
+      const leap = Math.sin(enemy.t * 2.4 + (enemy.x || 0) * 0.01);
+      const rising = leap > 0.35;
+      if (rising && !enemy.up) {
+        audio.splash();
+        state.particles.push({ x: enemy.x, y: home, vx: 0, vy: -20, life: 0.35, max: 0.35, kind: "puff", color: "#d7f3ff" });
+      }
       enemy.up = rising;
-      enemy.y = home - Math.max(0, leap) * 64;
+      enemy.y = home - Math.max(0, leap) * 78;
     } else if (enemy.kind === "chicken" || enemy.kind === "rooster") {
       const reach = enemy.kind === "rooster" ? 230 : 150;
       const close = Math.abs(player.x - enemy.x) < reach;
@@ -1008,10 +1047,14 @@ function updateEnemies(state, dt) {
         enemy.x += enemy.dir * (enemy.kind === "rooster" ? 34 : 40) * dt;
         if (enemy.x < enemy.min || enemy.x > enemy.max) enemy.dir *= -1;
         if (close) {
+          const boss = enemy.kind === "rooster";
+          const hp = enemy.hp || 1;
           enemy.phase = "wind";
-          enemy.wind = enemy.kind === "rooster" ? 0.55 : 0.28;
+          enemy.wind = boss && hp >= 3 ? 0.62 : boss ? 0.5 : 0.32;
           enemy.dir = player.x > enemy.x ? 1 : -1;
-          if (enemy.kind === "rooster") audio.crow();
+          enemy.act = boss && hp >= 3 ? "wave" : boss && hp <= 1 ? "eggs" : "charge";
+          if (!boss) enemy.egged = false;
+          if (boss) audio.crow();
           else audio.cluck();
         }
       } else if (enemy.phase === "wind") {
@@ -1025,7 +1068,20 @@ function updateEnemies(state, dt) {
         const speed = (enemy.kind === "rooster" ? 145 : 108) * (fed ? 0.6 : 1);
         enemy.x += enemy.dir * speed * dt;
         enemy.charge -= dt;
-        if (enemy.charge <= 0) enemy.phase = "strut";
+        if (enemy.charge <= 0) {
+          enemy.phase = "strut";
+          if (enemy.kind === "chicken" && !enemy.egged) {
+            enemy.egged = true;
+            state.shots.push({ x: enemy.x, y: enemy.y + 4, vx: enemy.dir * 80, vy: -30, life: 2, kind: "egg" });
+          }
+          if (enemy.act === "wave") {
+            state.shots.push({ x: enemy.x, y: GROUND - 14, vx: enemy.dir * 150, vy: 0, life: 1.3, kind: "wave" });
+          }
+          if (enemy.act === "eggs") {
+            state.shots.push({ x: enemy.x, y: enemy.y - 6, vx: enemy.dir * 120, vy: -150, life: 1.8, kind: "egg" });
+          }
+          enemy.egged = enemy.kind === "chicken";
+        }
       }
       enemy.x = Math.max(enemy.min, Math.min(enemy.max, enemy.x));
       enemy.y = home + Math.abs(Math.sin(enemy.t * 14)) * -6;
@@ -1072,12 +1128,21 @@ function updateEnemies(state, dt) {
     shot.life -= dt;
     shot.x += shot.vx * dt;
     shot.y += shot.vy * dt;
-    shot.vy += 400 * dt;
-    if (player.invuln <= 0 && Math.hypot(shot.x - player.x, shot.y - player.y) < 24) {
-      hurt(state, shot.vx > 0 ? 140 : -140);
+    if (shot.kind === "wave") shot.y = GROUND - 14;
+    else if (shot.kind === "egg") shot.vy = Math.min(80, shot.vy + 260 * dt);
+    else shot.vy += 420 * dt;
+    const cx = player.x + 16;
+    const cy = player.y + 28;
+    const swat = (player.swipeHit || player.pounce > 0) && Math.hypot(shot.x - cx, shot.y - cy) < 48;
+    if (swat) {
+      state.particles.push({ x: shot.x, y: shot.y, vx: 0, vy: -30, life: 0.3, max: 0.3, kind: "star", color: "#fff3b0" });
       return false;
     }
-    return shot.life > 0 && shot.y < GROUND;
+    if (!player.ride && player.invuln <= 0 && Math.hypot(shot.x - cx, shot.y - cy) < 20) {
+      hurt(state, shot.vx > 0 ? 120 : -120);
+      return false;
+    }
+    return shot.life > 0 && shot.y < GROUND + 8;
   });
 }
 
@@ -1575,6 +1640,14 @@ function drawEnemy(g, enemy, time) {
     g.beginPath();
     g.arc(9, -1, 1.15, 0, Math.PI * 2);
     g.fill();
+    if (enemy.cheese) {
+      g.fillStyle = "#f2c14b";
+      g.beginPath();
+      g.moveTo(12, 2);
+      g.lineTo(20, 4);
+      g.lineTo(13, 8);
+      g.fill();
+    }
     g.fillStyle = "rgba(255,255,255,0.55)";
     g.beginPath();
     g.ellipse(2, -2, 4, 1.6, -0.4, 0, Math.PI * 2);
@@ -1611,6 +1684,12 @@ function drawEnemy(g, enemy, time) {
     g.beginPath();
     g.arc(8, 0, 1.15, 0, Math.PI * 2);
     g.fill();
+    if (enemy.wind > 0.05) {
+      g.fillStyle = "#8a5a32";
+      g.beginPath();
+      g.arc(14, -8 - enemy.wind * 10, 3.4, 0, Math.PI * 2);
+      g.fill();
+    }
     g.restore();
   } else if (enemy.kind === "fish") {
     drawFish(g, { x: 0, y: 0, golden: false, phase: enemy.t || 0, got: false, enemy: true }, time);
@@ -1920,10 +1999,26 @@ function drawWorld(state) {
     }
   }
   for (const shot of state.shots) {
-    ctx.fillStyle = "#8a5a32";
-    ctx.beginPath();
-    ctx.arc(shot.x, shot.y, 5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.save();
+    ctx.translate(shot.x, shot.y);
+    if (shot.kind === "egg") {
+      ctx.fillStyle = "#f7f1e6";
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 6, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (shot.kind === "wave") {
+      ctx.strokeStyle = "rgba(90, 70, 50, 0.45)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, 16, Math.PI, 0);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = "#8a5a32";
+      ctx.beginPath();
+      ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
   if (level.rod && !state.gotRod) {
     ctx.strokeStyle = "#c9843a";
@@ -2349,38 +2444,98 @@ function portrait() {
   ctx.fillText("Reunion", w * 0.72, 28);
 }
 
-function bindHold(button, key) {
-  const down = (event) => {
+const pointers = new Map();
+
+function padKeys() {
+  return [
+    ["left", "#left"],
+    ["right", "#right"],
+    ["jump", "#jump"],
+    ["scratch", "#scratch"],
+    ["fish", "#fish-btn"],
+    ["action", "#action"],
+  ];
+}
+
+function nearestPad(x, y) {
+  let best = null;
+  let bestD = 96;
+  for (const [key, selector] of padKeys()) {
+    const el = document.querySelector(selector);
+    if (!el || el.hidden) continue;
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const near = x >= rect.left - 32 && x <= rect.right + 32 && y >= rect.top - 32 && y <= rect.bottom + 32;
+    const dist = Math.hypot(x - cx, y - cy);
+    if (near && dist < bestD) {
+      best = key;
+      bestD = dist;
+    }
+  }
+  return best;
+}
+
+function paintPad() {
+  for (const [key, selector] of padKeys()) {
+    const el = document.querySelector(selector);
+    if (el) el.classList.toggle("on", !!held[key]);
+  }
+}
+
+function holdKey(key, on) {
+  if (!key) return;
+  const still = on ? true : [...pointers.values()].some((name) => name === key);
+  held[key] = on || still;
+  if (on && (key === "jump" || key === "scratch" || key === "fish" || key === "action")) pressed[key] = true;
+  paintPad();
+}
+
+function releasePads() {
+  pointers.clear();
+  for (const key of Object.keys(held)) held[key] = false;
+  paintPad();
+}
+
+function bindPad() {
+  const pad = document.querySelector("#pad");
+  pad.addEventListener("pointerdown", (event) => {
+    const key = nearestPad(event.clientX, event.clientY);
+    if (!key) return;
     event.preventDefault();
     audio.unlock();
-    held[key] = true;
-    if (key === "jump" || key === "scratch" || key === "fish" || key === "action") pressed[key] = true;
-  };
-  const up = (event) => {
-    event.preventDefault();
-    held[key] = false;
-  };
-  button.addEventListener("pointerdown", down, { passive: false });
-  button.addEventListener("pointerup", up, { passive: false });
-  button.addEventListener("pointercancel", (event) => {
-    if (event.pointerType === "touch") return;
-    held[key] = false;
+    pointers.set(event.pointerId, key);
+    holdKey(key, true);
+    try { pad.setPointerCapture(event.pointerId); } catch (error) { /* already captured */ }
+  }, { passive: false });
+  pad.addEventListener("pointermove", (event) => {
+    if (!pointers.has(event.pointerId)) return;
+    const prev = pointers.get(event.pointerId);
+    const next = nearestPad(event.clientX, event.clientY);
+    if (!next || next === prev) return;
+    const steering = (name) => name === "left" || name === "right";
+    if (steering(prev) && steering(next)) {
+      pointers.set(event.pointerId, next);
+      holdKey(prev, false);
+      holdKey(next, true);
+    }
   });
-  button.addEventListener("touchstart", down, { passive: false });
-  button.addEventListener("touchend", up, { passive: false });
-  button.addEventListener("touchcancel", up, { passive: false });
+  const end = (event) => {
+    const key = pointers.get(event.pointerId);
+    if (!key) return;
+    pointers.delete(event.pointerId);
+    holdKey(key, false);
+  };
+  pad.addEventListener("pointerup", end);
+  pad.addEventListener("pointercancel", end);
+  pad.addEventListener("lostpointercapture", end);
 }
 
 function boot() {
   resize();
   audio.setMix(progress.sound);
   audio.playMusic("music-inside");
-  bindHold(document.querySelector("#left"), "left");
-  bindHold(document.querySelector("#right"), "right");
-  bindHold(document.querySelector("#jump"), "jump");
-  bindHold(document.querySelector("#scratch"), "scratch");
-  bindHold(document.querySelector("#fish-btn"), "fish");
-  bindHold(document.querySelector("#action"), "action");
+  bindPad();
   document.querySelector("#play").addEventListener("click", () => {
     audio.unlock();
     fillSelect();
@@ -2476,9 +2631,13 @@ function boot() {
     if (key === "arrowright" || key === "d") held.right = false;
     if (key === " " || key === "arrowup" || key === "w") held.jump = false;
   });
+  const releaseInput = () => releasePads();
+  window.addEventListener("blur", releaseInput);
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) audio.pause();
-    else audio.resume();
+    if (document.hidden) {
+      releasePads();
+      audio.pause();
+    } else audio.resume();
     paintSound();
   });
   fillJumps();
@@ -3053,6 +3212,66 @@ function fishAudit() {
   }));
 }
 
+function inputTest() {
+  document.querySelector("#overlay").hidden = true;
+  document.querySelector("#pad").hidden = false;
+  releasePads();
+  const pad = document.querySelector("#pad");
+  const left = document.querySelector("#left").getBoundingClientRect();
+  const right = document.querySelector("#right").getBoundingClientRect();
+  const jump = document.querySelector("#jump").getBoundingClientRect();
+  const fire = (type, id, x, y) => {
+    pad.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: y, bubbles: true, pointerType: "touch" }));
+  };
+  const mid = (rect) => [rect.left + rect.width / 2, rect.top + rect.height / 2];
+  const [lx, ly] = mid(left);
+  const [rx, ry] = mid(right);
+  const [jx, jy] = mid(jump);
+  fire("pointerdown", 1, lx, ly);
+  fire("pointerdown", 2, jx, jy);
+  const both = held.left && held.jump;
+  fire("pointerup", 2, jx, jy);
+  const leftStays = held.left && !held.jump;
+  fire("pointermove", 1, rx, ry);
+  const slid = !held.left && held.right;
+  fire("pointercancel", 1, rx, ry);
+  const cleared = !held.left && !held.right && !held.jump;
+  fire("pointerdown", 3, left.left - 20, ly);
+  const near = held.left === true;
+  releasePads();
+  held.left = true;
+  held.jump = true;
+  window.dispatchEvent(new Event("blur"));
+  const blurred = !held.left && !held.jump;
+  return { both, leftStays, slid, cleared, near, blurred, ok: both && leftStays && slid && cleared && near && blurred };
+}
+
+function stepTest() {
+  const bad = [];
+  for (const level of LEVELS) {
+    const index = LEVELS.indexOf(level);
+    const trial = fresh(quietProgress(), index);
+    trial.mode = "play";
+    const solids = trial.level.solids.filter((block) => block.kind !== "floor" && block.kind !== "pond" && block.y < GROUND - 10 && block.w > 40);
+    for (const block of solids.slice(0, 10)) {
+      const floor = trial.level.solids.find((item) => item.kind === "floor" && block.x > item.x + 20 && block.x < item.x + item.w - 20);
+      if (!floor) continue;
+      if ((trial.level.hazards || []).some((hazard) => Math.abs(hazard.x - block.x) < 140)) continue;
+      trial.player.x = Math.max(floor.x + 4, block.x - 28);
+      trial.player.y = GROUND - PH;
+      trial.player.vx = 0;
+      trial.player.vy = 0;
+      trial.player.jumped = false;
+      trial.player.onGround = true;
+      const start = trial.player.y;
+      for (let i = 0; i < 30 && trial.player.x < block.x + 12; i++) step(trial, 1 / 60, { ...still(), right: true });
+      if (trial.player.y < start - 10) bad.push({ id: level.id, y: Math.round(trial.player.y), block: block.kind });
+    }
+  }
+  if (bad.length) throw new Error(`walked up ${JSON.stringify(bad.slice(0, 4))}`);
+  return { ok: true, checked: LEVELS.length };
+}
+
 function birdDiveTest() {
   const bad = [];
   for (const id of ["living", "porch", "yard", "neighbor"]) {
@@ -3073,6 +3292,45 @@ function birdDiveTest() {
   }
   if (bad.length) throw new Error(`bird dived from behind ${JSON.stringify(bad.slice(0, 3))}`);
   return { ok: true, levels: 4 };
+}
+
+function behaviorCard() {
+  document.querySelector("#overlay").hidden = true;
+  document.querySelector("#hud").hidden = true;
+  document.querySelector("#pad").hidden = true;
+  document.querySelector("#sound-prompt").hidden = true;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const w = view.width;
+  const h = view.height;
+  ctx.fillStyle = "#f6efe6";
+  ctx.fillRect(0, 0, w, h);
+  const cast = [
+    ["mouse + cheese", { kind: "mouse", cheese: true, t: 0.5, dir: 1 }],
+    ["squirrel wind-up", { kind: "squirrel", wind: 0.28, t: 0.4, dir: 1 }],
+    ["chicken charge", { kind: "chicken", t: 0.7, dir: 1, phase: "charge" }],
+    ["leaping fish", { kind: "fish", t: 1.3 }],
+    ["rooster", { kind: "rooster", t: 0.5, dir: 1, hp: 2, big: true }],
+    ["bird telegraph", { kind: "bird", species: "cardinal", t: 0.5, dive: "warn" }],
+  ];
+  cast.forEach((entry, index) => {
+    const [label, extra] = entry;
+    const x = (index + 0.5) * (w / cast.length);
+    ctx.save();
+    ctx.translate(x, h * 0.48);
+    ctx.scale(2.3, 2.3);
+    drawEnemy(ctx, { x: 0, y: 0, alive: true, home: 0, dir: 1, phase: "strut", ...extra }, 0.6);
+    ctx.restore();
+    if (extra.kind === "squirrel") {
+      ctx.fillStyle = "#8a5a32";
+      ctx.beginPath();
+      ctx.arc(x + 70, h * 0.34, 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#3a2a22";
+    ctx.font = "700 16px 'Avenir Next', 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(label, x, h * 0.78);
+  });
 }
 
 function enemyZoom() {
@@ -3184,7 +3442,10 @@ window.sunbeam = {
   rideTest,
   fishAudit,
   birdDiveTest,
+  inputTest,
+  stepTest,
   enemyZoom,
+  behaviorCard,
   birdZoom,
   audit,
   LEVELS,
