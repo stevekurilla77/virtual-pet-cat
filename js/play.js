@@ -318,6 +318,7 @@ function fresh(progress, levelIndex) {
     heartAwarded: false,
     gotRod: progress.rod,
     checkpoint: level.spawn,
+    safe: { x: level.spawn, y: GROUND - PH },
     camX: 0,
     camY: 0,
     time: 0,
@@ -386,7 +387,48 @@ function movePlayer(state, dt, input) {
     audio.meow("kitten");
   }
   player.wasGround = player.onGround;
-  if (player.y > 760) hurt(state, 0);
+  if (player.onGround) rememberSafe(state);
+  if (player.y > 720) hurt(state, "pit");
+}
+
+function surfaceBelow(state, x, feet) {
+  const cx = x + PW / 2;
+  let best = null;
+  for (const block of state.level.solids) {
+    if (block.kind === "pond") continue;
+    if (cx < block.x + 8 || cx > block.x + block.w - 8) continue;
+    if (block.y < feet - 8) continue;
+    if (best == null || block.y < best) best = block.y;
+  }
+  return best;
+}
+
+function rememberSafe(state) {
+  const player = state.player;
+  const feet = player.y + PH;
+  const surface = surfaceBelow(state, player.x, feet);
+  if (surface == null || Math.abs(surface - feet) > 3) return;
+  const crowded = state.level.enemies.some((enemy) => enemy.alive !== false && !enemy.flee && Math.abs(enemy.x - (player.x + PW / 2)) < 64 && Math.abs(enemy.y - player.y) < 48);
+  if (crowded) return;
+  state.safe = { x: player.x, y: player.y };
+}
+
+function respawn(state) {
+  const player = state.player;
+  const spot = state.safe || { x: state.level.spawn, y: GROUND - PH };
+  player.x = spot.x;
+  player.y = spot.y;
+  player.vx = 0;
+  player.vy = 0;
+  player.onGround = true;
+  player.wasGround = true;
+  player.invuln = 1.7;
+  player.hurt = 0.25;
+  state.fishing = null;
+  state.snapCam = true;
+  state.respawned = true;
+  state.banner = "Back on solid ground";
+  state.bannerT = 1.3;
 }
 
 const ACCEL = 1700;
@@ -429,22 +471,18 @@ function hurt(state, knock) {
   const player = state.player;
   if (player.invuln > 0 || state.won) return;
   player.health -= 1;
-  player.invuln = 1.15;
-  player.hurt = 0.35;
-  player.vy = -280;
-  player.vx = knock || -player.facing * 160;
   state.shake = 7;
   audio.sting("music-hurt");
   audio.yowl();
-  if (player.health <= 0) {
-    player.health = 3;
-    player.x = state.checkpoint;
-    player.y = GROUND - PH;
-    player.vx = 0;
-    player.vy = 0;
-    state.banner = "Back to the last safe spot";
-    state.bannerT = 1.6;
+  if (knock === "pit" || player.health <= 0) {
+    if (player.health <= 0) player.health = 3;
+    respawn(state);
+    return;
   }
+  player.invuln = 1.15;
+  player.hurt = 0.35;
+  player.vy = -280;
+  player.vx = typeof knock === "number" ? knock : -player.facing * 160;
 }
 
 function collectFish(state, fish) {
@@ -574,6 +612,7 @@ function updatePose(state, dt) {
   cat.x = player.x + PW / 2;
   cat.groundY = player.y + PH;
   cat.hop = 0;
+  cat.hideShadow = true;
   cat.facing = player.facing;
   cat.squash += ((player.land > 0 ? 0.72 : 1) - cat.squash) * Math.min(1, dt * 10);
   cat.gait = pose === "run" ? "gallop" : "walk";
@@ -661,7 +700,6 @@ function step(state, dt, input) {
   updatePose(state, dt);
   const owner = state.level.owner;
   if (player.x + PW > owner.x && player.y + PH > owner.y) finish(state);
-  if (player.x > state.checkpoint + 200) state.checkpoint = Math.max(state.checkpoint, player.x - 80);
   if (!state.gotRod && state.level.rod && Math.abs(player.x - state.level.rod.x) < 36) {
     state.gotRod = true;
     state.progress.rod = true;
@@ -731,12 +769,83 @@ function simulate(id) {
   return { id, won: state.won, x: Math.round(state.player.x), health: state.player.health, fish: state.fishGot, total: state.level.fishValue, frames };
 }
 
+function planted(state) {
+  const feet = state.player.y + PH;
+  const surface = surfaceBelow(state, state.player.x, feet);
+  return surface != null && Math.abs(surface - feet) < 2 && state.player.vy === 0;
+}
+
+function still() {
+  return { left: false, right: false, jump: false, jumpPressed: false, scratch: false, scratchPressed: false, fish: false, fishPressed: false };
+}
+
+function testPit(id = "living") {
+  const progress = {
+    cat: { name: "Miso", gender: "girl", hair: "short", coat: "orange", eyes: "green" },
+    sound: { music: 0, musicOn: false, effects: 0, effectsOn: false },
+    unlocked: 4, stars: {}, rod: true, unlockAll: true, fishBank: 0, bestFish: {},
+  };
+  const index = LEVELS.findIndex((level) => level.id === id);
+  const state = fresh(progress, index);
+  state.mode = "play";
+  const dt = 1 / 60;
+  for (let i = 0; i < 20; i++) step(state, dt, still());
+  const start = { x: state.player.x, y: state.player.y, planted: planted(state) };
+  const floors = state.level.solids.filter((block) => block.kind === "floor").sort((a, b) => a.x - b.x);
+  const gap = floors[0].x + floors[0].w + 30;
+  state.player.x = gap;
+  state.player.y = GROUND - PH - 20;
+  state.player.vy = 80;
+  state.player.onGround = false;
+  let fell = false;
+  for (let i = 0; i < 240; i++) {
+    step(state, dt, still());
+    if (state.respawned) {
+      fell = true;
+      break;
+    }
+  }
+  state.fishing = { t: 0, bite: 10, caught: false, spot: state.level.water[0] || { x: state.player.x, w: 40, y: state.player.y } };
+  for (let i = 0; i < 8; i++) step(state, dt, still());
+  state.fishing = null;
+  const afterFish = planted(state);
+  state.player.health = 1;
+  state.player.invuln = 0;
+  hurt(state, -80);
+  const afterHit = planted(state);
+  return {
+    id,
+    fell,
+    startPlanted: start.planted,
+    afterFish,
+    afterHit,
+    grounded: planted(state),
+    vy: state.player.vy,
+    x: Math.round(state.player.x),
+    y: Math.round(state.player.y),
+    safeX: Math.round(state.safe.x),
+    invuln: state.player.invuln > 0,
+  };
+}
+
 const palette = {
-  living: ["#f6d7c4", "#f3c2a4", "#e7b48a", "#d7b48a"],
-  porch: ["#cfe8f8", "#f4d7b0", "#e7c48a", "#c9955c"],
-  yard: ["#b7e3f6", "#c6ec9a", "#8fbf62", "#d7b48a"],
-  neighbor: ["#f7e3d4", "#f0d2c0", "#e2c4ae", "#c9a88a"],
+  living: { sky0: "#ffb15a", sky1: "#ffe0a8", sky2: "#fff6df", sun: "#fff3c4", hill: "#f08a4b", floor: "#e0903a", couch: "#d23d55", table: "#f2c14b", shelf: "#7d5cff", sill: "#3ecf8e", hearth: "#c45a3a", rug: "#e4578b" },
+  porch: { sky0: "#2eb6f2", sky1: "#9ae7ff", sky2: "#fff1b0", sun: "#fff6c8", hill: "#ff8f4a", floor: "#ef8a32", couch: "#ff5d8f", table: "#7c5cff", shelf: "#3ecf8e", sill: "#ffd23f", hearth: "#f27d3a", rug: "#5ad7a5" },
+  yard: { sky0: "#3ec8ff", sky1: "#b8f08a", sky2: "#fff4b0", sun: "#fff6c2", hill: "#49c45a", floor: "#d4893a", couch: "#ff5d8f", table: "#ffe14a", shelf: "#3ecf6e", sill: "#7ed957", hearth: "#2f9e44", rug: "#ff8a3d" },
+  neighbor: { sky0: "#5a3d8c", sky1: "#e36a3a", sky2: "#ffb15a", sun: "#ffd29a", hill: "#c44b7a", floor: "#6d4b86", couch: "#ff7a45", table: "#f2c14b", shelf: "#8d6cff", sill: "#ff8fb8", hearth: "#ffb15a", rug: "#3ec6c0" },
 };
+
+function blockColor(theme, kind) {
+  const colors = palette[theme];
+  if (kind === "couch") return colors.couch;
+  if (kind === "table" || kind === "chair") return colors.table;
+  if (kind === "shelf" || kind === "perch" || kind === "cage") return colors.shelf;
+  if (kind === "sill" || kind === "planter" || kind === "rail") return colors.sill;
+  if (kind === "hearth" || kind === "step" || kind === "mailbox") return colors.hearth;
+  if (kind === "branch" || kind === "fence") return colors.hill;
+  if (kind === "tank") return "#2f86c9";
+  return colors.floor;
+}
 
 function bake(level) {
   const far = document.createElement("canvas");
@@ -745,26 +854,33 @@ function bake(level) {
   const f = far.getContext("2d");
   const colors = palette[level.theme];
   const sky = f.createLinearGradient(0, 0, 0, 320);
-  sky.addColorStop(0, colors[0]);
-  sky.addColorStop(1, colors[1]);
+  sky.addColorStop(0, colors.sky0);
+  sky.addColorStop(0.55, colors.sky1);
+  sky.addColorStop(1, colors.sky2);
   f.fillStyle = sky;
   f.fillRect(0, 0, 900, 320);
-  f.fillStyle = "rgba(255,255,255,0.35)";
+  f.fillStyle = colors.sun;
   f.beginPath();
-  f.arc(180, 70, 36, 0, Math.PI * 2);
+  f.arc(160, 64, 40, 0, Math.PI * 2);
   f.fill();
-  f.fillStyle = colors[2];
-  f.globalAlpha = 0.45;
+  f.fillStyle = colors.hill;
+  f.globalAlpha = 0.72;
   f.beginPath();
-  f.ellipse(200, 250, 180, 40, 0, 0, Math.PI * 2);
-  f.ellipse(520, 270, 220, 36, 0, 0, Math.PI * 2);
+  f.ellipse(180, 236, 210, 52, 0, 0, Math.PI * 2);
+  f.ellipse(620, 248, 250, 44, 0, 0, Math.PI * 2);
+  f.fill();
+  f.globalAlpha = 0.55;
+  f.fillStyle = colors.sill;
+  f.beginPath();
+  f.ellipse(400, 286, 180, 34, 0, 0, Math.PI * 2);
+  f.ellipse(760, 300, 160, 28, 0, 0, Math.PI * 2);
   f.fill();
   f.globalAlpha = 1;
   const mid = document.createElement("canvas");
   mid.width = Math.min(2400, level.width);
   mid.height = 560;
   const m = mid.getContext("2d");
-  m.fillStyle = colors[1];
+  m.fillStyle = colors.sky1;
   if (level.theme === "living") {
     m.fillStyle = "rgba(255,244,236,0.35)";
     m.fillRect(80, 40, 520, 250);
@@ -833,6 +949,9 @@ function drawEnemy(g, enemy, time) {
   g.save();
   g.globalAlpha = enemy.flee ? Math.max(0, enemy.flee) : 1;
   g.translate(enemy.x, enemy.y);
+  g.shadowColor = "rgba(28,16,10,0.4)";
+  g.shadowBlur = 8;
+  g.shadowOffsetY = 3;
   if (enemy.kind === "mouse") {
     g.fillStyle = "#c7b4a4";
     g.beginPath();
@@ -874,6 +993,76 @@ function drawEnemy(g, enemy, time) {
   g.restore();
 }
 
+function drawCatShadow(g, state) {
+  const feet = state.player.y + PH;
+  const surface = surfaceBelow(state, state.player.x, feet);
+  state.shadowY = surface;
+  if (surface == null) return;
+  const height = Math.max(0, surface - feet);
+  const lift = Math.min(1, height / 150);
+  g.save();
+  g.translate(state.player.x + PW / 2, surface + 3);
+  g.globalAlpha = 0.42 * (1 - lift * 0.72);
+  g.fillStyle = "#3a2418";
+  g.beginPath();
+  g.ellipse(0, 0, (20 - lift * 9) * state.cat.scale, (6.5 - lift * 2.2) * state.cat.scale, 0, 0, Math.PI * 2);
+  g.fill();
+  g.restore();
+}
+
+function drawRug(g, x, y, w, h, color, stripe) {
+  g.save();
+  g.translate(x, y);
+  round(g, -w / 2, -h / 2, w, h, 12);
+  g.fillStyle = color;
+  g.fill();
+  g.fillStyle = stripe;
+  for (let i = -3; i <= 3; i++) g.fillRect(i * (w / 8) - 4, -h / 2 + 5, 7, h - 10);
+  g.restore();
+}
+
+function drawFlower(g, x, y, petal, center, time, index) {
+  const sway = Math.sin(time * 1.15 + index) * 3;
+  g.strokeStyle = "#2f8a3a";
+  g.lineWidth = 2;
+  g.beginPath();
+  g.moveTo(x, y + 18);
+  g.quadraticCurveTo(x + sway * 0.4, y + 8, x + sway, y);
+  g.stroke();
+  g.fillStyle = petal;
+  for (let i = 0; i < 5; i++) {
+    const angle = (i / 5) * Math.PI * 2;
+    g.beginPath();
+    g.ellipse(x + sway + Math.cos(angle) * 6, y + Math.sin(angle) * 6, 4.4, 3.1, angle, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.fillStyle = center;
+  g.beginPath();
+  g.arc(x + sway, y, 3.1, 0, Math.PI * 2);
+  g.fill();
+}
+
+function drawScenery(g, level, time) {
+  const colors = palette[level.theme];
+  if (level.theme === "living") {
+    drawRug(g, 250, GROUND - 4, 150, 28, colors.rug, "#ffd36a");
+    drawRug(g, 620, GROUND - 2, 120, 22, colors.table, "#fff6df");
+    drawRug(g, 900, GROUND - 4, 100, 20, colors.shelf, "#ffd6ea");
+    return;
+  }
+  const petals = level.theme === "yard"
+    ? ["#ff5d8f", "#ffe14a", "#ff8a3d", "#ffffff", "#7c5cff"]
+    : level.theme === "neighbor"
+      ? ["#ff8fb8", "#ffd29a", "#c9a0ff", "#ffb15a", "#7ee0d6"]
+      : ["#ff5d8f", "#ffd23f", "#7c5cff", "#ff8a3d", "#ffffff"];
+  const centers = ["#fff6c2", "#ff8a3d", "#ffe14a", "#ff5d8f", "#fff"];
+  const count = Math.max(8, Math.floor((level.width - 220) / 92));
+  for (let i = 0; i < count; i++) {
+    const x = 140 + i * 92;
+    drawFlower(g, x, GROUND - 16 - (i % 3) * 4, petals[i % petals.length], centers[i % centers.length], time, i);
+  }
+}
+
 function drawOwner(g, owner, time) {
   g.save();
   g.translate(owner.x, owner.y);
@@ -899,8 +1088,14 @@ function drawWorld(state) {
   const shakeX = (Math.random() - 0.5) * state.shake;
   const targetX = state.player.x - w / state.dpr * 0.38 + state.player.facing * 70;
   const targetY = state.player.y - h / state.dpr * 0.62;
-  state.camX += (targetX - state.camX) * 0.08;
-  state.camY += (targetY - state.camY) * 0.08;
+  if (state.snapCam) {
+    state.camX = targetX;
+    state.camY = targetY;
+    state.snapCam = false;
+  } else {
+    state.camX += (targetX - state.camX) * 0.08;
+    state.camY += (targetY - state.camY) * 0.08;
+  }
   state.camX = Math.max(0, Math.min(level.width - w / state.dpr, state.camX));
   ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
@@ -908,8 +1103,14 @@ function drawWorld(state) {
   ctx.drawImage(state.bake.far, -((state.camX * 0.2) % 900) + 900, 0, 900, h / state.dpr);
   ctx.save();
   ctx.translate(-state.camX + shakeX, -state.camY);
-  const floorColor = palette[level.theme][3];
-  ctx.fillStyle = floorColor;
+  const colors = palette[level.theme];
+  const drift = 0.5 + 0.5 * Math.sin(state.time * 0.35);
+  ctx.fillStyle = colors.rug;
+  ctx.globalAlpha = 0.22 + drift * 0.08;
+  ctx.beginPath();
+  ctx.ellipse(380, GROUND - 6, 180, 24, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
   for (const block of level.solids) {
     if (block.kind === "pond") {
       const water = ctx.createLinearGradient(0, block.y, 0, block.y + 40);
@@ -920,12 +1121,30 @@ function drawWorld(state) {
       ctx.fill();
       continue;
     }
-    const top = block.kind === "floor" ? floorColor : block.kind === "couch" ? "#c96b4a" : block.kind === "table" ? "#e7c48a" : "#f4e2cc";
-    ctx.fillStyle = top;
+    ctx.fillStyle = blockColor(level.theme, block.kind);
     round(ctx, block.x, block.y, block.w, Math.min(block.h, 80), 12);
     ctx.fill();
-    ctx.fillStyle = "rgba(80,40,20,0.08)";
+    ctx.fillStyle = "rgba(255,255,255,0.32)";
+    ctx.fillRect(block.x + 12, block.y + 6, Math.max(8, block.w - 24), 6);
+    ctx.fillStyle = "rgba(40,20,10,0.12)";
     ctx.fillRect(block.x + 8, block.y + Math.min(block.h, 80) - 8, block.w - 16, 8);
+  }
+  if (level.theme === "yard" || level.theme === "porch") {
+    const origin = level.theme === "yard" ? 90 : 40;
+    for (let i = 0; i < 5; i++) {
+      const sway = Math.sin(state.time * 0.25 + i) * 24;
+      const ray = ctx.createLinearGradient(origin, 0, origin + 260 + i * 90, GROUND);
+      ray.addColorStop(0, `rgba(255,236,160,${0.05 + drift * 0.08})`);
+      ray.addColorStop(0.35, `rgba(255,220,120,${0.16 + drift * 0.08})`);
+      ray.addColorStop(1, "rgba(255,220,120,0)");
+      ctx.fillStyle = ray;
+      ctx.beginPath();
+      ctx.moveTo(origin + sway, -20);
+      ctx.lineTo(origin + 28 + sway, -20);
+      ctx.lineTo(origin + 160 + i * 150, GROUND + 10);
+      ctx.lineTo(origin + 40 + i * 150, GROUND + 10);
+      ctx.fill();
+    }
   }
   if (level.theme === "living") {
     ctx.fillStyle = "rgba(186, 224, 244, 0.85)";
@@ -936,7 +1155,7 @@ function drawWorld(state) {
     ctx.stroke();
     const beam = ctx.createLinearGradient(160, 80, 420, GROUND);
     beam.addColorStop(0, "rgba(255,226,150,0)");
-    beam.addColorStop(0.25, "rgba(255,220,140,0.28)");
+    beam.addColorStop(0.25, `rgba(255,210,90,${0.22 + drift * 0.16})`);
     beam.addColorStop(1, "rgba(255,220,140,0)");
     ctx.fillStyle = beam;
     ctx.beginPath();
@@ -966,7 +1185,9 @@ function drawWorld(state) {
     ctx.quadraticCurveTo(level.rod.x + 16, level.rod.y - 40, level.rod.x + 6, level.rod.y - 64);
     ctx.stroke();
   }
+  drawScenery(ctx, level, state.time);
   drawOwner(ctx, level.owner, state.time);
+  drawCatShadow(ctx, state);
   if (state.player.invuln <= 0 || Math.sin(state.time * 40) > 0) paintCat(ctx, state.cat, state.time);
   for (const bit of state.particles) {
     ctx.globalAlpha = Math.max(0, bit.life / bit.max);
@@ -1364,11 +1585,20 @@ function syncSound() {
 
 boot();
 
+function snapshot() {
+  if (!state) return;
+  updatePose(state, 1 / 60);
+  drawWorld(state);
+  paintHud();
+}
+
 window.sunbeam = {
   audio,
   get state() { return state; },
   startLevel,
   simulate,
+  testPit,
+  snapshot,
   LEVELS,
   show,
 };

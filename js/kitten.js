@@ -72,14 +72,16 @@ function edge(ctx, color) {
 export function paintCat(ctx, cat, time) {
   if (cat.inBox) return;
   const air = Math.min(1, Math.abs(cat.hop) / 90);
-  ctx.save();
-  ctx.translate(cat.x, cat.groundY + 3);
-  ctx.globalAlpha = 0.2 * (1 - air * 0.5);
-  ctx.fillStyle = "#5c4636";
-  ctx.beginPath();
-  ctx.ellipse(0, 0, (cat.curl > 0.6 ? 26 : 34) * cat.scale * (1 - air * 0.2), 8 * cat.scale, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  if (!cat.hideShadow) {
+    ctx.save();
+    ctx.translate(cat.x, cat.groundY + 3);
+    ctx.globalAlpha = 0.2 * (1 - air * 0.5);
+    ctx.fillStyle = "#5c4636";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, (cat.curl > 0.6 ? 26 : 34) * cat.scale * (1 - air * 0.2), 8 * cat.scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 
   ctx.save();
   ctx.translate(cat.x + Math.sin(time * 46) * (cat.purr || 0) * 0.28, cat.groundY + cat.hop);
