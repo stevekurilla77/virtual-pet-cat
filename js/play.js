@@ -38,193 +38,356 @@ function lineFish(list, x, y, n, dx = 36) {
 }
 
 function buildLevel(spec) {
-  const fish = [];
-  for (const group of spec.groups) {
-    if (group.kind === "arc") arcFish(fish, group.x0, group.x1, group.y, group.n);
-    else if (group.kind === "line") lineFish(fish, group.x, group.y, group.n, group.dx);
-    else addFish(fish, group.x, group.y, Boolean(group.golden));
+  const fish = spec.placed ? spec.placed.slice() : [];
+  if (!fish.length) {
+    for (const group of spec.groups || []) {
+      if (group.kind === "arc") arcFish(fish, group.x0, group.x1, group.y, group.n);
+      else if (group.kind === "line") lineFish(fish, group.x, group.y, group.n, group.dx);
+      else addFish(fish, group.x, group.y, Boolean(group.golden));
+    }
   }
   return { ...spec, fish, fishValue: fish.length };
 }
 
+function course() {
+  const solids = [];
+  const highs = [];
+  const gaps = [];
+  const water = [];
+  const checkpoints = [];
+  let cursor = 0;
+  const api = {
+    solids, highs, gaps, water, checkpoints,
+    get x() { return cursor; },
+    floor(w) {
+      const span = { x: cursor, w, y: GROUND };
+      solids.push(solid(cursor, GROUND, w, 240, "floor"));
+      cursor += w;
+      return span;
+    },
+    gap(w) {
+      gaps.push({ x: cursor, w });
+      cursor += w;
+    },
+    plat(at, y, w, h, kind) {
+      solids.push(solid(at, y, w, Math.max(h, 18), kind));
+      highs.push({ x: at + w / 2, y, w });
+    },
+    decor(span, at, h, w, kind) {
+      this.plat(span.x + at, GROUND - h, w, h, kind);
+    },
+    stairs(n, rise, kind) {
+      let px = cursor + 10;
+      const pw = 180;
+      const stride = 196;
+      const step = Math.min(rise, 34);
+      for (let i = 0; i < n; i++) {
+        this.plat(px, GROUND - step * (i + 1), pw, 18, kind);
+        px += stride;
+      }
+      for (let i = n - 2; i >= 0; i--) {
+        this.plat(px, GROUND - step * (i + 1), pw, 18, kind);
+        px += stride;
+      }
+      cursor = px + 12;
+    },
+    bed() {
+      const span = this.floor(250);
+      checkpoints.push({ x: span.x + 120, y: GROUND - PH });
+    },
+    pond(w) {
+      const span = this.floor(w);
+      water.push({ x: span.x + 40, w: w - 80, y: GROUND - 8 });
+      solids.push(solid(span.x + 30, GROUND - 4, w - 60, 36, "pond"));
+      return span;
+    },
+  };
+  return api;
+}
+
+function floorAt(solids, x) {
+  return solids.find((block) => block.kind === "floor" && x >= block.x + 90 && x <= block.x + block.w - 90);
+}
+
+function placeFoe(world, kind, frac, width, extra = {}) {
+  let spot = 180 + frac * (width - 360);
+  for (let hop = 0; hop < 14; hop++) {
+    const nearBed = world.checkpoints.some((mark) => Math.abs(mark.x - spot) < 170);
+    const floor = floorAt(world.solids, spot);
+    const bodyY = kind === "bird" ? 146 : kind === "fish" ? GROUND - 6 : GROUND - 24;
+    const blocked = world.solids.some((block) => block.kind !== "floor" && block.kind !== "pond" && spot > block.x + 8 && spot < block.x + block.w - 8 && bodyY > block.y && bodyY < block.y + block.h);
+    if (floor && !nearBed && !blocked) {
+      const y = kind === "bird" ? 146 : kind === "fish" ? GROUND - 6 : kind === "chicken" || kind === "rooster" ? GROUND - 30 : GROUND - 20;
+      world.enemies = world.enemies || [];
+      world.enemies.push({
+        kind,
+        x: spot,
+        y,
+        min: floor.x + 70,
+        max: floor.x + floor.w - 70,
+        hp: extra.hp || 1,
+        big: Boolean(extra.big),
+        home: y,
+      });
+      return;
+    }
+    spot += 90;
+  }
+}
+
+function placeSquirrel(world, frac, width) {
+  const want = 200 + frac * (width - 400);
+  const plat = world.highs.find((high) => high.y < GROUND - 30 && Math.abs(high.x - want) < 280) || world.highs.find((high) => high.y < GROUND - 30);
+  if (!plat) return;
+  world.enemies = world.enemies || [];
+  world.enemies.push({
+    kind: "squirrel",
+    x: plat.x,
+    y: plat.y - 16,
+    min: plat.x - Math.min(36, plat.w / 2 - 8),
+    max: plat.x + Math.min(36, plat.w / 2 - 8),
+    hp: 1,
+    home: plat.y - 16,
+  });
+}
+
+function placeLeaper(world, index) {
+  const pond = world.water[index % Math.max(1, world.water.length)];
+  if (!pond) return;
+  world.enemies = world.enemies || [];
+  world.enemies.push({
+    kind: "fish",
+    x: pond.x + pond.w * (0.35 + (index % 3) * 0.15),
+    y: pond.y + 4,
+    min: pond.x + 16,
+    max: pond.x + pond.w - 16,
+    hp: 1,
+    home: pond.y + 4,
+  });
+}
+
+function stockFish(world, target, ownerX) {
+  const fish = [];
+  for (const gap of world.gaps) {
+    if (gap.w < 80 || gap.w > 160) continue;
+    arcFish(fish, gap.x - 6, gap.x + gap.w + 6, GROUND - 24, 4);
+  }
+  world.solids.filter((block) => block.kind === "floor" && block.w >= 560).forEach((block, index) => {
+    if (index % 2 === 0) return;
+    lineFish(fish, block.x + 100, GROUND - 34, 4, 36);
+  });
+  for (const high of world.highs) {
+    if (high.y > GROUND - 40) continue;
+    addFish(fish, high.x, high.y - 22);
+  }
+  const open = (x, y) => !world.solids.some((block) => block.kind !== "floor" && block.kind !== "pond" && x >= block.x && x <= block.x + block.w && y >= block.y && y <= block.y + block.h);
+  const room = Math.max(0, target - 1);
+  const kept = fish.filter((item) => open(item.x, item.y)).slice(0, room);
+  const floors = world.solids.filter((block) => block.kind === "floor" && block.w > 220);
+  let guard = 0;
+  while (kept.length < room && guard < 120) {
+    const floor = floors[guard % floors.length];
+    const x = floor.x + 70 + (guard * 41) % Math.max(40, floor.w - 140);
+    const y = GROUND - 34;
+    if (open(x, y) && !kept.some((item) => Math.abs(item.x - x) < 30 && Math.abs(item.y - y) < 24)) addFish(kept, x, y);
+    guard += 1;
+  }
+  addFish(kept, ownerX - 60, GROUND - 120, true);
+  return kept;
+}
+
+function lay(spec) {
+  const world = course();
+  world.enemies = [];
+  for (const beat of spec.beats) beat(world);
+  world.floor(300);
+  const width = world.x + 20;
+  const owner = { x: width - 130, y: GROUND - 86 };
+  spec.cast(world, width);
+  for (const enemy of world.enemies) {
+    if (enemy.kind === "bird" || enemy.kind === "fish") continue;
+    for (let hop = 0; hop < 8; hop++) {
+      const buried = world.solids.some((block) => block.kind !== "floor" && block.kind !== "pond" && enemy.x > block.x + 2 && enemy.x < block.x + block.w - 2 && enemy.y > block.y + 2 && enemy.y < block.y + block.h - 2);
+      if (!buried) break;
+      enemy.x += 36;
+    }
+  }
+  return buildLevel({
+    id: spec.id,
+    name: spec.name,
+    music: spec.music,
+    width,
+    theme: spec.theme,
+    spawn: 70,
+    owner,
+    checkpoint: world.checkpoints[0] ? world.checkpoints[0].x : 500,
+    checkpoints: world.checkpoints,
+    water: world.water,
+    rod: spec.rod ? spec.rod(world, width) : null,
+    solids: world.solids,
+    enemies: world.enemies,
+    placed: stockFish(world, spec.fish, owner.x),
+  });
+}
+
 const LEVELS = [
-  buildLevel({
+  lay({
     id: "living",
     name: "Living room",
     music: "music-living",
-    width: 4300,
     theme: "living",
-    spawn: 70,
-    owner: { x: 4040, y: GROUND - 86 },
-    checkpoint: 2100,
-    water: [{ x: 2280, w: 150, y: GROUND - 36 }],
-    solids: [
-      solid(0, GROUND, 1020, 220, "floor"),
-      solid(1160, GROUND, 1480, 220, "floor"),
-      solid(2760, GROUND, 1540, 220, "floor"),
-      solid(220, GROUND - 64, 230, 64, "couch"),
-      solid(560, GROUND - 42, 170, 42, "table"),
-      solid(1320, GROUND - 86, 100, 18, "perch"),
-      solid(1460, GROUND - 150, 100, 18, "perch"),
-      solid(1600, GROUND - 86, 110, 18, "perch"),
-      solid(1960, GROUND - 120, 220, 18, "sill"),
-      solid(2300, GROUND - 36, 130, 36, "tank"),
-      solid(3000, GROUND - 48, 110, 48, "step"),
-      solid(3140, GROUND - 96, 110, 96, "step"),
-      solid(3280, GROUND - 48, 120, 48, "step"),
-      solid(3680, GROUND - 28, 240, 28, "hearth"),
+    fish: 44,
+    beats: [
+      (w) => { const s = w.floor(820); w.decor(s, 180, 64, 220, "couch"); w.decor(s, 520, 42, 160, "table"); },
+      (w) => w.gap(100),
+      (w) => w.floor(680),
+      (w) => w.gap(108),
+      (w) => { const s = w.floor(740); w.decor(s, 80, 86, 110, "perch"); w.decor(s, 280, 150, 110, "perch"); w.decor(s, 480, 86, 120, "sill"); },
+      (w) => w.stairs(3, 42, "step"),
+      (w) => w.floor(620),
+      (w) => w.bed(),
+      (w) => w.floor(700),
+      (w) => w.gap(118),
+      (w) => { const s = w.floor(640); w.decor(s, 200, 36, 140, "tank"); },
+      (w) => w.gap(124),
+      (w) => w.stairs(3, 44, "step"),
+      (w) => w.floor(860),
+      (w) => w.gap(132),
+      (w) => w.floor(720),
+      (w) => w.gap(116),
+      (w) => w.stairs(3, 40, "step"),
+      (w) => w.floor(700),
+      (w) => w.gap(124),
+      (w) => { const s = w.floor(980); w.decor(s, 180, 48, 200, "hearth"); },
     ],
-    enemies: [
-      { kind: "mouse", x: 480, y: GROUND - 22, min: 360, max: 900 },
-      { kind: "mouse", x: 1500, y: GROUND - 172, min: 1460, max: 1540 },
-      { kind: "bird", x: 2050, y: 180, min: 1900, max: 2200 },
-      { kind: "fish", x: 2360, y: GROUND - 20, min: 2300, max: 2420 },
-    ],
-    groups: [
-      { kind: "line", x: 760, y: GROUND - 36, n: 4, dx: 40 },
-      { kind: "arc", x0: 990, x1: 1190, y: GROUND - 28, n: 4 },
-      { kind: "line", x: 1700, y: GROUND - 36, n: 5, dx: 38 },
-      { kind: "spot", x: 1370, y: GROUND - 112 },
-      { kind: "spot", x: 1510, y: GROUND - 176 },
-      { kind: "spot", x: 1655, y: GROUND - 112 },
-      { kind: "line", x: 1990, y: GROUND - 148, n: 3, dx: 48 },
-      { kind: "arc", x0: 2240, x1: 2460, y: GROUND - 48, n: 3 },
-      { kind: "arc", x0: 2600, x1: 2800, y: GROUND - 28, n: 4 },
-      { kind: "spot", x: 3055, y: GROUND - 78 },
-      { kind: "spot", x: 3195, y: GROUND - 128 },
-      { kind: "line", x: 3480, y: GROUND - 36, n: 3, dx: 40 },
-      { kind: "spot", x: 3980, y: GROUND - 130, golden: true },
-    ],
+    cast(w) {
+      [0.07, 0.16, 0.3, 0.52, 0.66, 0.8, 0.9].forEach((frac) => placeFoe(w, "mouse", frac, w.x));
+      [0.22, 0.46, 0.74].forEach((frac) => placeFoe(w, "bird", frac, w.x));
+    },
   }),
-  buildLevel({
+  lay({
     id: "porch",
     name: "Front porch",
     music: "music-porch",
-    width: 3900,
     theme: "porch",
-    spawn: 70,
-    owner: { x: 3620, y: GROUND - 86 },
-    checkpoint: 1800,
-    water: [],
-    solids: [
-      solid(0, GROUND, 800, 220, "floor"),
-      solid(940, GROUND - 40, 700, 260, "floor"),
-      solid(1760, GROUND, 900, 220, "floor"),
-      solid(2780, GROUND - 30, 1120, 250, "floor"),
-      solid(280, GROUND - 70, 120, 20, "planter"),
-      solid(1180, GROUND - 110, 140, 20, "rail"),
-      solid(2000, GROUND - 80, 160, 22, "chair"),
-      solid(2400, GROUND - 50, 90, 50, "mailbox"),
+    fish: 50,
+    beats: [
+      (w) => { const s = w.floor(760); w.decor(s, 160, 70, 130, "planter"); },
+      (w) => w.gap(104),
+      (w) => { const s = w.floor(700); w.decor(s, 220, 100, 150, "rail"); },
+      (w) => w.gap(112),
+      (w) => w.stairs(3, 40, "rail"),
+      (w) => w.floor(560),
+      (w) => w.bed(),
+      (w) => w.pond(460),
+      (w) => w.gap(116),
+      (w) => { const s = w.floor(680); w.decor(s, 160, 78, 150, "chair"); },
+      (w) => w.gap(122),
+      (w) => w.floor(640),
+      (w) => w.bed(),
+      (w) => w.stairs(3, 44, "rail"),
+      (w) => w.gap(130),
+      (w) => w.floor(700),
+      (w) => w.gap(114),
+      (w) => w.stairs(3, 40, "rail"),
+      (w) => w.floor(680),
+      (w) => w.gap(122),
+      (w) => { const s = w.floor(900); w.decor(s, 240, 50, 90, "mailbox"); },
     ],
-    enemies: [
-      { kind: "bird", x: 600, y: 160, min: 400, max: 780 },
-      { kind: "squirrel", x: 1400, y: GROUND - 80, min: 1000, max: 1600 },
-      { kind: "bird", x: 2200, y: 150, min: 1900, max: 2500 },
-      { kind: "squirrel", x: 3000, y: GROUND - 70, min: 2860, max: 3400 },
-    ],
-    groups: [
-      { kind: "line", x: 150, y: GROUND - 36, n: 4, dx: 38 },
-      { kind: "line", x: 300, y: GROUND - 98, n: 3, dx: 32 },
-      { kind: "arc", x0: 760, x1: 980, y: GROUND - 28, n: 4 },
-      { kind: "line", x: 1040, y: GROUND - 70, n: 4, dx: 36 },
-      { kind: "line", x: 1200, y: GROUND - 138, n: 3, dx: 36 },
-      { kind: "arc", x0: 1600, x1: 1800, y: GROUND - 68, n: 4 },
-      { kind: "line", x: 1880, y: GROUND - 36, n: 4, dx: 38 },
-      { kind: "line", x: 2030, y: GROUND - 108, n: 3, dx: 36 },
-      { kind: "arc", x0: 2620, x1: 2820, y: GROUND - 28, n: 3 },
-      { kind: "line", x: 3200, y: GROUND - 64, n: 3, dx: 40 },
-      { kind: "spot", x: 3520, y: GROUND - 140, golden: true },
-    ],
+    cast(w) {
+      [0.1, 0.4, 0.72].forEach((frac) => placeFoe(w, "mouse", frac, w.x));
+      [0.14, 0.28, 0.48, 0.63, 0.82, 0.93].forEach((frac) => placeFoe(w, "bird", frac, w.x));
+      [0.2, 0.36, 0.55, 0.7, 0.88].forEach((frac) => placeSquirrel(w, frac, w.x));
+      [0, 1].forEach((index) => placeLeaper(w, index));
+    },
   }),
-  buildLevel({
+  lay({
     id: "yard",
     name: "The yard",
     music: "music-yard",
-    width: 4200,
     theme: "yard",
-    spawn: 70,
-    owner: { x: 3920, y: GROUND - 86 },
-    checkpoint: 2000,
-    rod: { x: 1680, y: GROUND - 36 },
-    water: [{ x: 2500, w: 280, y: GROUND - 8 }],
-    solids: [
-      solid(0, GROUND, 900, 220, "floor"),
-      solid(1040, GROUND, 700, 220, "floor"),
-      solid(1860, GROUND - 70, 180, 18, "branch"),
-      solid(2100, GROUND - 130, 160, 18, "branch"),
-      solid(1860, GROUND, 1480, 220, "floor"),
-      solid(3340, GROUND, 860, 220, "floor"),
-      solid(3200, GROUND - 60, 140, 18, "fence"),
-      solid(3460, GROUND - 100, 120, 18, "fence"),
+    fish: 54,
+    rod: (w) => ({ x: Math.min(w.x - 400, 2100), y: GROUND - 36 }),
+    beats: [
+      (w) => w.floor(840),
+      (w) => w.gap(106),
+      (w) => { const s = w.floor(720); w.decor(s, 180, 70, 170, "branch"); w.decor(s, 460, 120, 150, "branch"); },
+      (w) => w.gap(114),
+      (w) => w.floor(600),
+      (w) => w.bed(),
+      (w) => w.pond(520),
+      (w) => w.stairs(3, 42, "fence"),
+      (w) => w.gap(120),
+      (w) => { const s = w.floor(760); w.decor(s, 200, 60, 140, "fence"); },
+      (w) => w.bed(),
+      (w) => w.gap(126),
+      (w) => w.pond(420),
+      (w) => w.stairs(4, 40, "branch"),
+      (w) => w.gap(134),
+      (w) => w.floor(740),
+      (w) => w.gap(118),
+      (w) => w.stairs(3, 40, "fence"),
+      (w) => w.floor(700),
+      (w) => w.gap(126),
+      (w) => w.floor(980),
     ],
-    enemies: [
-      { kind: "chicken", x: 500, y: GROUND - 36, min: 300, max: 860 },
-      { kind: "squirrel", x: 1300, y: GROUND - 36, min: 1100, max: 1680 },
-      { kind: "fish", x: 2620, y: GROUND - 10, min: 2520, max: 2740 },
-      { kind: "chicken", x: 3300, y: GROUND - 36, min: 3000, max: 3700 },
-    ],
-    groups: [
-      { kind: "line", x: 180, y: GROUND - 36, n: 5, dx: 40 },
-      { kind: "arc", x0: 860, x1: 1080, y: GROUND - 28, n: 4 },
-      { kind: "line", x: 1160, y: GROUND - 36, n: 4, dx: 40 },
-      { kind: "arc", x0: 1700, x1: 1900, y: GROUND - 28, n: 4 },
-      { kind: "line", x: 1900, y: GROUND - 98, n: 3, dx: 40 },
-      { kind: "line", x: 2120, y: GROUND - 158, n: 3, dx: 36 },
-      { kind: "line", x: 2220, y: GROUND - 36, n: 4, dx: 38 },
-      { kind: "arc", x0: 2480, x1: 2780, y: GROUND - 20, n: 5 },
-      { kind: "spot", x: 3260, y: GROUND - 88 },
-      { kind: "spot", x: 3510, y: GROUND - 128 },
-      { kind: "line", x: 3680, y: GROUND - 36, n: 3, dx: 40 },
-      { kind: "spot", x: 3840, y: GROUND - 130, golden: true },
-    ],
+    cast(w) {
+      [0.08, 0.58].forEach((frac) => placeFoe(w, "mouse", frac, w.x));
+      [0.18, 0.44, 0.76].forEach((frac) => placeFoe(w, "bird", frac, w.x));
+      [0.16, 0.34, 0.62, 0.84].forEach((frac) => placeSquirrel(w, frac, w.x));
+      [0.12, 0.26, 0.5, 0.68, 0.8, 0.92].forEach((frac) => placeFoe(w, "chicken", frac, w.x));
+      [0, 1, 2].forEach((index) => placeLeaper(w, index));
+    },
   }),
-  buildLevel({
+  lay({
     id: "neighbor",
     name: "Neighbor's house",
     music: "music-neighbor",
-    width: 4400,
     theme: "neighbor",
-    spawn: 70,
-    owner: { x: 4120, y: GROUND - 86 },
-    checkpoint: 2200,
-    water: [{ x: 3000, w: 160, y: GROUND - 40 }],
-    solids: [
-      solid(0, GROUND, 700, 220, "floor"),
-      solid(860, GROUND - 70, 200, 18, "counter"),
-      solid(860, GROUND, 520, 220, "floor"),
-      solid(1500, GROUND, 400, 220, "floor"),
-      solid(1680, GROUND - 120, 160, 18, "shelf"),
-      solid(2020, GROUND, 700, 220, "floor"),
-      solid(2840, GROUND - 50, 180, 50, "tank"),
-      solid(2860, GROUND, 1540, 220, "floor"),
-      solid(3400, GROUND - 90, 120, 18, "cage"),
-      solid(3600, GROUND - 150, 120, 18, "cage"),
-      solid(3800, GROUND - 90, 140, 18, "cage"),
+    fish: 58,
+    beats: [
+      (w) => { const s = w.floor(780); w.decor(s, 200, 70, 180, "counter"); },
+      (w) => w.gap(108),
+      (w) => { const s = w.floor(700); w.decor(s, 160, 120, 150, "shelf"); },
+      (w) => w.gap(116),
+      (w) => w.stairs(3, 42, "cage"),
+      (w) => w.floor(560),
+      (w) => w.bed(),
+      (w) => w.pond(480),
+      (w) => w.gap(122),
+      (w) => { const s = w.floor(720); w.decor(s, 80, 90, 120, "cage"); w.decor(s, 320, 150, 120, "cage"); w.decor(s, 520, 90, 130, "cage"); },
+      (w) => w.bed(),
+      (w) => w.stairs(4, 42, "shelf"),
+      (w) => w.gap(130),
+      (w) => w.pond(400),
+      (w) => w.gap(136),
+      (w) => w.floor(760),
+      (w) => w.gap(120),
+      (w) => w.stairs(3, 42, "cage"),
+      (w) => w.floor(720),
+      (w) => w.gap(128),
+      (w) => w.floor(1560),
     ],
-    enemies: [
-      { kind: "mouse", x: 400, y: GROUND - 22, min: 200, max: 660 },
-      { kind: "mouse", x: 1100, y: GROUND - 92, min: 880, max: 1040 },
-      { kind: "bird", x: 2300, y: 150, min: 2100, max: 2600 },
-      { kind: "mouse", x: 3200, y: GROUND - 22, min: 3000, max: 3600 },
-    ],
-    groups: [
-      { kind: "line", x: 160, y: GROUND - 36, n: 4, dx: 40 },
-      { kind: "arc", x0: 660, x1: 900, y: GROUND - 28, n: 4 },
-      { kind: "line", x: 900, y: GROUND - 98, n: 3, dx: 40 },
-      { kind: "line", x: 1080, y: GROUND - 36, n: 4, dx: 38 },
-      { kind: "arc", x0: 1340, x1: 1540, y: GROUND - 28, n: 3 },
-      { kind: "line", x: 1700, y: GROUND - 148, n: 3, dx: 36 },
-      { kind: "arc", x0: 1860, x1: 2060, y: GROUND - 28, n: 4 },
-      { kind: "line", x: 2200, y: GROUND - 36, n: 4, dx: 40 },
-      { kind: "arc", x0: 2680, x1: 2900, y: GROUND - 28, n: 4 },
-      { kind: "spot", x: 3460, y: GROUND - 118 },
-      { kind: "spot", x: 3660, y: GROUND - 178 },
-      { kind: "spot", x: 3860, y: GROUND - 118 },
-      { kind: "line", x: 4000, y: GROUND - 36, n: 3, dx: 40 },
-      { kind: "spot", x: 4040, y: GROUND - 140, golden: true },
-    ],
+    cast(w) {
+      [0.06, 0.24, 0.47, 0.7].forEach((frac) => placeFoe(w, "mouse", frac, w.x));
+      [0.12, 0.33, 0.58, 0.8].forEach((frac) => placeFoe(w, "bird", frac, w.x));
+      [0.18, 0.4, 0.64, 0.86].forEach((frac) => placeSquirrel(w, frac, w.x));
+      [0.1, 0.22, 0.38, 0.55, 0.73, 0.88, 0.95].forEach((frac) => placeFoe(w, "chicken", frac, w.x));
+      [0, 1, 2].forEach((index) => placeLeaper(w, index));
+      placeFoe(w, "rooster", 0.97, w.x, { hp: 2, big: true });
+    },
   }),
 ];
+
+function heard(sound) {
+  const music = sound && Number(sound.music) > 0 ? Math.max(0, Math.min(1, Number(sound.music))) : 0.6;
+  return {
+    music,
+    musicOn: !sound || sound.musicOn !== false,
+    effects: sound && sound.effects != null ? Math.max(0, Math.min(1, Number(sound.effects))) : 0.8,
+    effectsOn: !sound || sound.effectsOn !== false,
+  };
+}
 
 function loadProgress() {
   try {
@@ -232,7 +395,7 @@ function loadProgress() {
     if (!raw || typeof raw !== "object") throw new Error("empty");
     return {
       cat: raw.cat || { name: "Miso", gender: "girl", hair: "short", coat: "orange", eyes: "green" },
-      sound: raw.sound || { music: 0.32, musicOn: true, effects: 0.8, effectsOn: true },
+      sound: heard(raw.sound),
       unlocked: raw.unlocked || 1,
       stars: raw.stars || {},
       rod: Boolean(raw.rod),
@@ -243,7 +406,7 @@ function loadProgress() {
   } catch (error) {
     return {
       cat: { name: "Miso", gender: "girl", hair: "short", coat: "orange", eyes: "green" },
-      sound: { music: 0.32, musicOn: true, effects: 0.8, effectsOn: true },
+      sound: heard(null),
       unlocked: 1,
       stars: {},
       rod: false,
@@ -485,8 +648,8 @@ function shoo(state, enemy) {
       vy: -40 - Math.random() * 80,
       life: 0.5,
       max: 0.5,
-      kind: "puff",
-      color: "#fff8f2",
+      kind: i % 2 ? "star" : "puff",
+      color: i % 2 ? "#ffe08a" : "#fff8f2",
     });
   }
 }
@@ -554,6 +717,13 @@ function updateFish(state, dt) {
   }
 }
 
+function cue(enemy, dt, fn) {
+  enemy.voice = (enemy.voice || 0) - dt;
+  if (enemy.voice > 0) return;
+  enemy.voice = 2.4;
+  fn();
+}
+
 function updateEnemies(state, dt) {
   const player = state.player;
   let nearest = 9999;
@@ -567,43 +737,111 @@ function updateEnemies(state, dt) {
     }
     if (enemy.alive === false) continue;
     enemy.t = (enemy.t || 0) + dt;
-    const home = enemy.y;
-    if (enemy.kind === "mouse") {
+    const home = enemy.home == null ? enemy.y : enemy.home;
+    if (enemy.stun > 0) {
+      enemy.stun -= dt;
+      enemy.x += (enemy.vx || 0) * dt;
+      enemy.vx *= 0.9;
+    } else if (enemy.kind === "mouse") {
       enemy.dir = enemy.dir || 1;
-      enemy.x += enemy.dir * 78 * dt;
+      enemy.x += enemy.dir * 96 * dt;
       if (enemy.x < enemy.min || enemy.x > enemy.max) enemy.dir *= -1;
-      enemy.y = home + Math.abs(Math.sin(enemy.t * 10)) * -8;
+      enemy.y = home + Math.abs(Math.sin(enemy.t * 14)) * -6;
+      if (Math.abs(player.x - enemy.x) < 200) cue(enemy, dt, () => audio.squeak());
     } else if (enemy.kind === "bird") {
-      enemy.x += Math.sin(enemy.t * 1.4) * 30 * dt * 8;
-      enemy.y = 150 + Math.sin(enemy.t * 2.2) * 24;
-      if (Math.abs(player.x - enemy.x) < 160) enemy.y += 40;
+      enemy.baseY = enemy.baseY || home;
+      const dx = player.x - enemy.x;
+      if (!enemy.dive && Math.abs(dx) < 170 && Math.abs(dx) > 36 && enemy.t > (enemy.wait || 0)) {
+        enemy.dive = "warn";
+        enemy.warn = 0.48;
+        enemy.tx = player.x + 36;
+        audio.tweet();
+      }
+      if (enemy.dive === "warn") {
+        enemy.warn -= dt;
+        enemy.y = enemy.baseY + Math.sin(enemy.t * 22) * 5;
+        if (enemy.warn <= 0) enemy.dive = "go";
+      } else if (enemy.dive === "go") {
+        enemy.y += 260 * dt;
+        enemy.x += (enemy.tx - enemy.x) * 3 * dt;
+        if (enemy.y > GROUND - 36) {
+          enemy.dive = null;
+          enemy.y = enemy.baseY;
+          enemy.wait = enemy.t + 2.4;
+        }
+      } else {
+        enemy.x += Math.sin(enemy.t * 1.3) * 22 * dt;
+        enemy.y = enemy.baseY + Math.sin(enemy.t * 2.1) * 14;
+      }
     } else if (enemy.kind === "squirrel") {
       enemy.dir = enemy.dir || 1;
-      enemy.x += enemy.dir * 90 * dt;
+      enemy.x += enemy.dir * 70 * dt;
       if (enemy.x < enemy.min || enemy.x > enemy.max) enemy.dir *= -1;
-      enemy.cool = (enemy.cool || 1.6) - dt;
-      if (enemy.cool <= 0) {
-        enemy.cool = 2.2;
-        state.shots.push({ x: enemy.x, y: enemy.y, vx: (enemy.dir || 1) * 160, vy: -80, life: 2 });
+      enemy.cool = (enemy.cool == null ? 1.4 : enemy.cool) - dt;
+      enemy.wind = Math.max(0, (enemy.wind || 0) - dt);
+      if (enemy.cool <= 0 && Math.abs(player.x - enemy.x) < 320) {
+        enemy.wind = 0.28;
+        enemy.cool = 2.6;
+        audio.chatter();
+      }
+      if (enemy.wind > 0 && enemy.wind < 0.04) {
+        const dir = player.x >= enemy.x ? 1 : -1;
+        state.shots.push({ x: enemy.x, y: enemy.y - 4, vx: dir * 150, vy: -120, life: 1.7 });
+        enemy.wind = 0;
       }
     } else if (enemy.kind === "fish") {
-      const leap = Math.sin(enemy.t * 2.4);
-      enemy.y = home - Math.max(0, leap) * 70;
-    } else if (enemy.kind === "chicken") {
-      const close = Math.abs(player.x - enemy.x) < 180;
+      const leap = Math.sin(enemy.t * 2.2);
+      const rising = leap > 0.2;
+      if (rising && !enemy.up) audio.splash();
+      enemy.up = rising;
+      enemy.y = home - Math.max(0, leap) * 64;
+    } else if (enemy.kind === "chicken" || enemy.kind === "rooster") {
+      const reach = enemy.kind === "rooster" ? 230 : 150;
+      const close = Math.abs(player.x - enemy.x) < reach;
       enemy.dir = enemy.dir || 1;
-      const speed = close ? 150 : 46;
-      if (close) enemy.dir = player.x > enemy.x ? 1 : -1;
-      enemy.x += enemy.dir * speed * dt;
+      enemy.phase = enemy.phase || "strut";
+      if (!close && enemy.phase !== "charge") enemy.phase = "strut";
+      if (enemy.phase === "strut") {
+        enemy.x += enemy.dir * (enemy.kind === "rooster" ? 34 : 40) * dt;
+        if (enemy.x < enemy.min || enemy.x > enemy.max) enemy.dir *= -1;
+        if (close) {
+          enemy.phase = "wind";
+          enemy.wind = enemy.kind === "rooster" ? 0.55 : 0.28;
+          enemy.dir = player.x > enemy.x ? 1 : -1;
+          if (enemy.kind === "rooster") audio.crow();
+          else audio.cluck();
+        }
+      } else if (enemy.phase === "wind") {
+        enemy.wind -= dt;
+        if (enemy.wind <= 0) {
+          enemy.phase = "charge";
+          enemy.charge = enemy.kind === "rooster" ? 0.7 : 0.42;
+        }
+      } else {
+        const speed = enemy.kind === "rooster" ? 145 : 108;
+        enemy.x += enemy.dir * speed * dt;
+        enemy.charge -= dt;
+        if (enemy.charge <= 0) enemy.phase = "strut";
+      }
       enemy.x = Math.max(enemy.min, Math.min(enemy.max, enemy.x));
-      enemy.y = home + (close ? Math.abs(Math.sin(enemy.t * 16)) * -10 : 0);
+      enemy.y = home + Math.abs(Math.sin(enemy.t * 14)) * -6;
     }
     nearest = Math.min(nearest, Math.abs(enemy.x - player.x));
-    const box = { x: enemy.x - 16, y: enemy.y - 16, w: 36, h: 32 };
+    const scale = enemy.big ? 1.4 : 1;
+    const box = { x: enemy.x - 16 * scale, y: enemy.y - 16 * scale, w: 36 * scale, h: 32 * scale };
     if (player.swipeHit && rectsOverlap(attackBox(player), box)) {
-      shoo(state, enemy);
+      enemy.hp = (enemy.hp || 1) - 1;
+      if (enemy.hp <= 0) shoo(state, enemy);
+      else {
+        enemy.stun = 0.6;
+        enemy.vx = player.facing * -160;
+        enemy.dive = null;
+        audio.tweet();
+        state.particles.push({ x: enemy.x, y: enemy.y, vx: 0, vy: -20, life: 0.35, max: 0.35, kind: "star", color: "#fff3b0" });
+      }
       continue;
     }
+    if (enemy.stun > 0) continue;
     if (player.invuln <= 0 && rectsOverlap(body(player), box)) hurt(state, enemy.x < player.x ? 180 : -180);
   }
   state.tension = nearest < 240 ? 1 - nearest / 240 : 0;
@@ -741,6 +979,15 @@ function step(state, dt, input) {
   updatePose(state, dt);
   const owner = state.level.owner;
   if (player.x + PW > owner.x && player.y + PH > owner.y) finish(state);
+  for (const mark of state.level.checkpoints || []) {
+    if (mark.got || !player.onGround) continue;
+    if (Math.abs(player.x + PW / 2 - mark.x) < 40) {
+      mark.got = true;
+      state.safe = { x: mark.x - 16, y: GROUND - PH };
+      state.banner = "A soft place to land.";
+      state.bannerT = 1.4;
+    }
+  }
   if (!state.gotRod && state.level.rod && Math.abs(player.x - state.level.rod.x) < 36) {
     state.gotRod = true;
     state.progress.rod = true;
@@ -766,14 +1013,16 @@ function policy(state) {
   const feet = player.y + PH;
   const supported = state.level.solids.some((block) => {
     if (block.kind === "pond") return false;
-    return ahead > block.x && ahead < block.x + block.w && block.y >= feet - 4 && block.y < feet + 36;
+    return ahead > block.x && ahead < block.x + block.w && block.y >= feet - 6 && block.y < feet + 150;
   });
-  const wall = state.level.solids.some((block) => {
+  const floorAhead = state.level.solids.some((block) => block.kind === "floor" && ahead > block.x && ahead < block.x + block.w && Math.abs(block.y - feet) < 10);
+  const wall = !floorAhead && state.level.solids.some((block) => {
     if (block.kind === "pond" || block.kind === "floor") return false;
     return rectsOverlap({ x: player.x + PW, y: player.y + 8, w: 10, h: PH - 20 }, block);
   });
   const foe = state.level.enemies.some((enemy) => enemy.alive !== false && !enemy.flee && enemy.x > player.x - 10 && enemy.x < player.x + 92 && Math.abs(enemy.y - player.y) < 70);
-  const needJump = player.onGround && (!supported || wall);
+  const hopper = state.level.enemies.some((enemy) => enemy.alive !== false && !enemy.flee && (enemy.stun || 0) <= 0 && ["mouse", "chicken", "rooster", "squirrel"].includes(enemy.kind) && enemy.x > player.x + 6 && enemy.x < player.x + 84 && Math.abs(enemy.y - player.y) < 54);
+  const needJump = player.onGround && (!supported || wall || hopper);
   const holdJump = !player.onGround && player.vy < 0;
   return {
     right: true,
@@ -803,7 +1052,7 @@ function simulate(id) {
   state.mode = "play";
   const dt = 1 / 60;
   let frames = 0;
-  while (frames < 60 * 55 && !state.won && state.player.health > 0) {
+  while (frames < 60 * 150 && !state.won && state.player.health > 0) {
     step(state, dt, policy(state));
     frames += 1;
   }
@@ -993,44 +1242,128 @@ function drawEnemy(g, enemy, time) {
   g.shadowColor = "rgba(28,16,10,0.4)";
   g.shadowBlur = 8;
   g.shadowOffsetY = 3;
+  if (enemy.big) g.scale(1.35, 1.35);
   if (enemy.kind === "mouse") {
-    g.fillStyle = "#c7b4a4";
+    g.fillStyle = "#d8b89a";
     g.beginPath();
-    g.ellipse(0, 0, 12, 7, 0, 0, Math.PI * 2);
+    g.ellipse(0, 1, 13, 7, 0, 0, Math.PI * 2);
     g.fill();
-    g.fillStyle = "#f2c9c0";
+    g.fillStyle = "#f3d2c6";
     g.beginPath();
-    g.arc(8, -2, 2, 0, Math.PI * 2);
+    g.ellipse(6, 2, 5, 3.4, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#e7a090";
+    g.beginPath();
+    g.arc(9, -3, 3.1, 0, Math.PI * 2);
+    g.arc(4, -4, 2.4, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = "#c47a8a";
+    g.lineWidth = 1.4;
+    g.beginPath();
+    g.moveTo(-12, 2);
+    g.quadraticCurveTo(-20, 8, -16, -4);
+    g.stroke();
+    g.fillStyle = "#2a211c";
+    g.beginPath();
+    g.arc(8, 0, 1, 0, Math.PI * 2);
     g.fill();
   } else if (enemy.kind === "bird") {
-    g.fillStyle = "#4c8ed9";
+    g.fillStyle = "#3d8de8";
     g.beginPath();
-    g.ellipse(0, 0, 10, 6, 0, 0, Math.PI * 2);
+    g.ellipse(0, 0, 11, 7, 0, 0, Math.PI * 2);
     g.fill();
-    const wing = Math.sin(time * 18) * 6;
+    const wing = Math.sin(time * (enemy.dive === "warn" ? 28 : 16)) * (enemy.dive === "go" ? 2 : 7);
+    g.fillStyle = "#7eb6f5";
     g.beginPath();
-    g.ellipse(-2, wing, 8, 3, 0.4, 0, Math.PI * 2);
+    g.ellipse(-1, wing, 9, 3.2, 0.3, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#f2c14b";
+    g.beginPath();
+    g.moveTo(10, 0);
+    g.lineTo(16, 2);
+    g.lineTo(10, 4);
+    g.fill();
+    g.fillStyle = "#1d2430";
+    g.beginPath();
+    g.arc(4, -1, 1.1, 0, Math.PI * 2);
     g.fill();
   } else if (enemy.kind === "squirrel") {
-    g.fillStyle = "#c47a3a";
+    g.fillStyle = "#d4843c";
     g.beginPath();
-    g.ellipse(0, 0, 12, 8, 0, 0, Math.PI * 2);
+    g.ellipse(0, 2, 12, 8, 0, 0, Math.PI * 2);
     g.fill();
+    g.fillStyle = "#f2c9a0";
     g.beginPath();
-    g.ellipse(-10, -8, 6, 10, -0.6, 0, Math.PI * 2);
+    g.ellipse(4, 4, 5, 3, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#e39a55";
+    g.beginPath();
+    g.ellipse(-12, -6, 7, 11, -0.7, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#1d2430";
+    g.beginPath();
+    g.arc(6, 0, 1.1, 0, Math.PI * 2);
     g.fill();
   } else if (enemy.kind === "fish") {
     drawFish(g, { x: 0, y: 0, golden: false, phase: enemy.t || 0, got: false }, time);
-  } else if (enemy.kind === "chicken") {
+  } else if (enemy.kind === "chicken" || enemy.kind === "rooster") {
+    const rooster = enemy.kind === "rooster";
+    g.fillStyle = rooster ? "#f0a03a" : "#f7f1e6";
+    g.beginPath();
+    g.ellipse(0, 2, rooster ? 16 : 14, 10, 0, 0, Math.PI * 2);
+    g.fill();
     g.fillStyle = "#f4efe4";
     g.beginPath();
-    g.ellipse(0, 0, 14, 10, 0, 0, Math.PI * 2);
+    g.arc(10, -2, 6, 0, Math.PI * 2);
     g.fill();
     g.fillStyle = "#e23b3b";
     g.beginPath();
-    g.arc(12, -2, 3, 0, Math.PI * 2);
+    g.ellipse(10, -8, 3.2, rooster ? 6 : 3.4, 0, 0, Math.PI * 2);
     g.fill();
+    g.fillStyle = "#f2c14b";
+    g.beginPath();
+    g.moveTo(15, -2);
+    g.lineTo(20, 0);
+    g.lineTo(15, 2);
+    g.fill();
+    if (rooster) {
+      g.strokeStyle = "#8a3d2a";
+      g.lineWidth = 2;
+      g.beginPath();
+      g.moveTo(-12, 0);
+      g.quadraticCurveTo(-20, -12, -14, -16);
+      g.stroke();
+    }
+    g.strokeStyle = "#e0a050";
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.moveTo(-2, 10);
+    g.lineTo(-4, 14);
+    g.moveTo(4, 10);
+    g.lineTo(6, 14);
+    g.stroke();
   }
+  g.restore();
+}
+
+function drawCheckpoint(g, mark, time) {
+  g.save();
+  g.translate(mark.x, GROUND);
+  g.fillStyle = mark.got ? "#f2c14b" : "#e07a3d";
+  g.fillRect(-2, -46, 4, 46);
+  g.beginPath();
+  g.moveTo(2, -46);
+  g.lineTo(22, -38 + Math.sin(time * 3) * 2);
+  g.lineTo(2, -30);
+  g.fill();
+  g.fillStyle = "#f7c6d0";
+  g.beginPath();
+  g.ellipse(0, -2, 22, 8, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#fff6ea";
+  g.beginPath();
+  g.ellipse(-6, -6, 8, 5, -0.3, 0, Math.PI * 2);
+  g.fill();
   g.restore();
 }
 
@@ -1210,8 +1543,20 @@ function drawWorld(state) {
     ctx.ellipse(420, GROUND - 8, 170, 28, 0, 0, Math.PI * 2);
     ctx.fill();
   }
+  for (const mark of level.checkpoints || []) drawCheckpoint(ctx, mark, state.time);
   for (const fish of level.fish) drawFish(ctx, fish, state.time);
-  for (const enemy of level.enemies) drawEnemy(ctx, enemy, state.time);
+  for (const enemy of level.enemies) {
+    if (enemy.dive === "warn") {
+      ctx.save();
+      ctx.globalAlpha = 0.35 + Math.sin(state.time * 16) * 0.1;
+      ctx.fillStyle = "#3a2418";
+      ctx.beginPath();
+      ctx.ellipse(enemy.tx || enemy.x, GROUND + 2, 16, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    drawEnemy(ctx, enemy, state.time);
+  }
   for (const shot of state.shots) {
     ctx.fillStyle = "#8a5a32";
     ctx.beginPath();
@@ -1234,7 +1579,18 @@ function drawWorld(state) {
     ctx.globalAlpha = Math.max(0, bit.life / bit.max);
     ctx.fillStyle = bit.color;
     ctx.beginPath();
-    ctx.arc(bit.x, bit.y, bit.kind === "spark" ? 4 : 7, 0, Math.PI * 2);
+    if (bit.kind === "star") {
+      ctx.moveTo(bit.x, bit.y - 6);
+      ctx.lineTo(bit.x + 2, bit.y - 1);
+      ctx.lineTo(bit.x + 6, bit.y);
+      ctx.lineTo(bit.x + 2, bit.y + 1);
+      ctx.lineTo(bit.x, bit.y + 6);
+      ctx.lineTo(bit.x - 2, bit.y + 1);
+      ctx.lineTo(bit.x - 6, bit.y);
+      ctx.lineTo(bit.x - 2, bit.y - 1);
+    } else {
+      ctx.arc(bit.x, bit.y, bit.kind === "spark" ? 4 : 7, 0, Math.PI * 2);
+    }
     ctx.fill();
     ctx.globalAlpha = 1;
   }
@@ -1335,6 +1691,9 @@ function paintHud() {
   if (!state) return;
   hearts.textContent = "♥".repeat(Math.max(0, state.player.health)) + "♡".repeat(Math.max(0, 3 - state.player.health));
   fishCount.textContent = `${state.fishGot}/${state.level.fishValue}`;
+  const fill = document.querySelector("#progress-fill");
+  if (fill) fill.style.width = `${Math.max(0, Math.min(1, state.player.x / Math.max(1, state.level.owner.x))) * 100}%`;
+  paintSound();
   banner.hidden = state.bannerT <= 0;
   banner.textContent = state.banner;
   const nearWater = state.level.water.some((water) => {
@@ -1365,7 +1724,29 @@ function loop(now) {
   } else if (screen === "select") {
     drawPreview();
   }
+  paintSound();
   requestAnimationFrame(loop);
+}
+
+function paintSound() {
+  const running = Boolean(audio.ctx && audio.ctx.state === "running");
+  const prompt = document.querySelector("#sound-prompt");
+  if (prompt) prompt.hidden = running;
+  const label = !running ? "Sound waiting" : audio.muted || !audio.musicOn ? "Sound off" : "Sound on";
+  for (const id of ["title-sound", "pause-sound"]) {
+    const button = document.querySelector(`#${id}`);
+    if (button) button.textContent = label;
+  }
+}
+
+function onSoundButton() {
+  const running = Boolean(audio.ctx && audio.ctx.state === "running");
+  audio.gesture();
+  if (running) {
+    audio.setMuted(!audio.muted);
+    if (!audio.muted && audio.current) audio.playMusic(audio.current, true);
+  }
+  paintSound();
 }
 
 function drawPreview() {
@@ -1519,9 +1900,25 @@ function boot() {
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) audio.pause();
     else audio.resume();
+    paintSound();
   });
   fillJumps();
   syncSound();
+  const arm = (event) => {
+    const target = event.target;
+    if (target && target.closest && target.closest("#title-sound, #pause-sound")) return;
+    audio.gesture();
+    paintSound();
+  };
+  for (const type of ["pointerup", "touchend"]) document.addEventListener(type, arm);
+  document.addEventListener("touchstart", arm, { passive: false });
+  document.querySelector("#title-sound").addEventListener("click", onSoundButton);
+  document.querySelector("#pause-sound").addEventListener("click", onSoundButton);
+  document.querySelector("#sound-prompt").addEventListener("click", () => {
+    audio.gesture();
+    paintSound();
+  });
+  paintSound();
   requestAnimationFrame(loop);
 }
 
@@ -1682,6 +2079,64 @@ function swipeSheet() {
   return counts;
 }
 
+function enemySheet() {
+  document.querySelector("#overlay").hidden = true;
+  document.querySelector("#hud").hidden = true;
+  document.querySelector("#pad").hidden = true;
+  document.querySelector("#sound-prompt").hidden = true;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const w = view.width;
+  const h = view.height;
+  ctx.fillStyle = "#f6efe4";
+  ctx.fillRect(0, 0, w, h);
+  const kinds = ["mouse", "bird", "squirrel", "fish", "chicken", "rooster"];
+  kinds.forEach((kind, index) => {
+    const x = (index + 0.5) * (w / kinds.length);
+    ctx.save();
+    ctx.translate(x, h * 0.46);
+    ctx.scale(2.8, 2.8);
+    drawEnemy(ctx, { kind, x: 0, y: 0, alive: true, t: 0.8, big: kind === "rooster", dive: null }, 1);
+    ctx.restore();
+    ctx.fillStyle = "#5c4638";
+    ctx.font = "600 18px 'Avenir Next', 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(kind, x, h * 0.78);
+  });
+}
+
+function covered(level, x, y) {
+  let best = null;
+  for (const block of level.solids) {
+    if (block.kind === "pond") continue;
+    if (x < block.x + 8 || x > block.x + block.w - 8) continue;
+    if (block.y < y - 8) continue;
+    if (best == null || block.y < best) best = block.y;
+  }
+  return best;
+}
+
+function insideSolid(level, x, y) {
+  return level.solids.some((block) => block.kind !== "pond" && x > block.x + 4 && x < block.x + block.w - 4 && y > block.y + 4 && y < block.y + Math.min(block.h, 64) - 4);
+}
+
+function audit(level) {
+  const problems = [];
+  for (const enemy of level.enemies) {
+    if (insideSolid(level, enemy.x, enemy.y)) problems.push(`${enemy.kind} inside a wall at ${Math.round(enemy.x)}`);
+    const ground = covered(level, enemy.x, enemy.y);
+    if (enemy.kind === "fish") {
+      const wet = level.water.some((pond) => enemy.x > pond.x && enemy.x < pond.x + pond.w);
+      if (!wet) problems.push(`fish not in water at ${Math.round(enemy.x)}`);
+    } else if (!ground) problems.push(`${enemy.kind} over a pit at ${Math.round(enemy.x)}`);
+    else if (enemy.kind !== "bird" && ground - enemy.y > 48) problems.push(`${enemy.kind} floating at ${Math.round(enemy.x)}`);
+  }
+  for (const fish of level.fish) {
+    if (insideSolid(level, fish.x, fish.y)) problems.push(`fish inside a wall at ${Math.round(fish.x)}`);
+    if (fish.y > GROUND - 8 && !covered(level, fish.x, fish.y)) problems.push(`fish in a pit at ${Math.round(fish.x)}`);
+  }
+  return { id: level.id, enemies: level.enemies.length, fish: level.fishValue, width: level.width, problems };
+}
+
 window.sunbeam = {
   audio,
   get state() { return state; },
@@ -1690,6 +2145,8 @@ window.sunbeam = {
   testPit,
   snapshot,
   swipeSheet,
+  enemySheet,
+  audit,
   LEVELS,
   show,
 };

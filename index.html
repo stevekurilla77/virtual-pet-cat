@@ -27,6 +27,7 @@
           <button id="play" class="primary" type="button">Play</button>
           <button id="quiet" class="ghost" type="button">The quiet room</button>
           <button id="title-settings" class="ghost" type="button">Settings</button>
+          <button id="title-sound" class="ghost" type="button">Sound waiting</button>
         </div>
       </div>
     </section>
@@ -84,9 +85,10 @@
       <div class="sheet glass">
         <p class="eyebrow">Settings</p>
         <h1>Sound and doors</h1>
-        <label class="field">Music <input id="music-volume" type="range" min="0" max="100" value="32"></label>
+        <label class="field">Music <input id="music-volume" type="range" min="0" max="100" value="60"></label>
         <label class="field">Effects <input id="sfx-volume" type="range" min="0" max="100" value="80"></label>
         <div class="row">
+          <button id="pause-sound" class="tiny" type="button">Sound waiting</button>
           <button id="music-toggle" class="tiny" type="button">Music on</button>
           <button id="sfx-toggle" class="tiny" type="button">Effects on</button>
           <button id="unlock-all" class="tiny" type="button">Unlock all levels</button>
@@ -115,7 +117,9 @@
     <div class="pills">
       <button id="pause" class="tiny glass" type="button">Pause</button>
     </div>
+    <div id="progress" aria-hidden="true"><span id="progress-fill"></span></div>
   </div>
+  <button id="sound-prompt" type="button" hidden>Tap to enable sound</button>
   <p id="banner" hidden></p>
   <div id="pad" hidden>
     <div class="cluster left">

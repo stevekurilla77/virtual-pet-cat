@@ -28,7 +28,7 @@ export class PlayAudio {
   constructor() {
     this.ctx = null;
     this.muted = false;
-    this.musicVol = 0.32;
+    this.musicVol = 0.6;
     this.musicOn = true;
     this.sfxVol = 0.8;
     this.sfxOn = true;
@@ -70,10 +70,53 @@ export class PlayAudio {
   }
 
   unlock() {
+    this.gesture();
+  }
+
+  gesture() {
     this.prime();
-    if (!this.ctx) return;
-    if (this.ctx.state === "suspended") this.ctx.resume();
+    this.keepAlive();
+    if (this.html && this.html.paused) {
+      const pending = this.html.play();
+      if (pending && pending.catch) pending.catch(() => {});
+    }
+    this.kick();
     if (!this.loading) this.loading = this.loadAll();
+    else if (this.ready && this.current && !this.loops[this.slot]) this.playMusic(this.current, true);
+  }
+
+  kick() {
+    if (!this.ctx) return;
+    if (this.ctx.state === "suspended" || this.ctx.state === "interrupted") {
+      const pending = this.ctx.resume();
+      if (pending && pending.catch) pending.catch(() => {});
+    }
+  }
+
+  keepAlive() {
+    if (this.html) return;
+    const audio = document.createElement("audio");
+    audio.setAttribute("playsinline", "");
+    audio.setAttribute("webkit-playsinline", "");
+    audio.loop = true;
+    audio.preload = "auto";
+    audio.src = tinyWav();
+    audio.volume = 0.01;
+    document.body.appendChild(audio);
+    this.html = audio;
+  }
+
+  status() {
+    const gain = this.slot === "a" ? this.gainA : this.gainB;
+    const src = this.loops ? this.loops[this.slot] : null;
+    return {
+      state: this.ctx ? this.ctx.state : "closed",
+      gain: gain ? gain.gain.value : 0,
+      looping: Boolean(src),
+      name: src && src.__name ? src.__name : this.current || "",
+      musicVol: this.musicVol,
+      html: Boolean(this.html && !this.html.paused),
+    };
   }
 
   prime() {
@@ -81,7 +124,7 @@ export class PlayAudio {
     if (!AC || this.ctx) return;
     const session = navigator.audioSession;
     if (session) {
-      try { session.type = "ambient"; } catch (error) { /* older Safari */ }
+      try { session.type = "playback"; } catch (error) { /* older Safari */ }
     }
     this.ctx = new AC();
     this.master = this.ctx.createGain();
@@ -231,7 +274,31 @@ export class PlayAudio {
   hiss() { this.voice("hiss", 0.72); }
   growl() { this.voice("growl", 0.75); }
   yowl() { this.voice("yowl", 0.74); }
-  tweet() { this.play(this.pick("tweet"), { rate: this.vary(), gain: 0.5 }); }
+  tweet() { this.play(this.pick("tweet"), { rate: this.vary(), gain: 0.34 }); }
+
+  squeak() { this.blip(920, 0.07, 0.1); }
+  chatter() { this.blip(460, 0.08, 0.09); }
+  splash() { this.blip(220, 0.11, 0.09); }
+  cluck() { this.blip(340, 0.09, 0.1); }
+  crow() { this.blip(480, 0.2, 0.14); }
+
+  blip(freq, dur, peak) {
+    if (!this.ctx || this.sfxLevel() <= 0) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(freq, t);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(60, freq * 0.72), t + dur);
+    const level = Math.max(0.0001, peak * this.sfxLevel());
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(level, t + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(gain);
+    gain.connect(this.sfxBus);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
 
   setPurr(on) {
     if (!this.ctx || !this.buffers["13_purr_loop_12s"]) return;
@@ -354,9 +421,41 @@ export class PlayAudio {
 
   resume() {
     this.hidden = false;
-    if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
+    this.kick();
+    if (this.html && this.html.paused) {
+      const pending = this.html.play();
+      if (pending && pending.catch) pending.catch(() => {});
+    }
     this.applyMusic(0.3);
+    if (this.ready && this.current && !this.loops[this.slot]) this.playMusic(this.current, true);
   }
+}
+
+function tinyWav() {
+  const rate = 8000;
+  const samples = 1600;
+  const buf = new ArrayBuffer(44 + samples * 2);
+  const view = new DataView(buf);
+  const text = (offset, value) => {
+    for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
+  };
+  text(0, "RIFF");
+  view.setUint32(4, 36 + samples * 2, true);
+  text(8, "WAVE");
+  text(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, "data");
+  view.setUint32(40, samples * 2, true);
+  let binary = "";
+  const bytes = new Uint8Array(buf);
+  for (const bite of bytes) binary += String.fromCharCode(bite);
+  return `data:audio/wav;base64,${btoa(binary)}`;
 }
 
 function seam(ctx, buffer) {

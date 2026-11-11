@@ -341,10 +341,45 @@ input[type="range"] { height: 28px; padding: 0; }
   top: 0;
   z-index: 4;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
   padding: calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 0 calc(12px + env(safe-area-inset-left));
   pointer-events: none;
+}
+
+#progress {
+  flex: 1 0 100%;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: rgba(255, 250, 244, 0.45);
+  overflow: hidden;
+}
+#progress-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: #e07a3d;
+}
+
+#sound-prompt {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  top: calc(12px + env(safe-area-inset-top));
+  transform: translateX(-50%);
+  margin: 0;
+  height: 32px;
+  line-height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: #2c241c;
+  color: #fff8f2;
+  font-family: "Avenir Next", "Segoe UI", ui-rounded, sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  pointer-events: auto;
 }
 
 .hearts { display: flex; gap: 4px; font-size: 22px; color: #e15b70; text-shadow: 0 2px 0 rgba(255,255,255,0.45); }
