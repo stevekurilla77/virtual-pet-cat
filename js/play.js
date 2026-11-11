@@ -1024,10 +1024,26 @@ function show(id) {
   screen = id;
 }
 
+function visibleBox() {
+  const viewport = window.visualViewport;
+  return {
+    width: Math.round(viewport ? viewport.width : window.innerWidth),
+    height: Math.round(viewport ? viewport.height : window.innerHeight),
+    top: viewport ? viewport.offsetTop : 0,
+    left: viewport ? viewport.offsetLeft : 0,
+  };
+}
+
 function resize() {
+  const box = visibleBox();
+  const app = document.querySelector("#app");
+  app.style.top = `${box.top}px`;
+  app.style.left = `${box.left}px`;
+  app.style.width = `${box.width}px`;
+  app.style.height = `${box.height}px`;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  view.width = Math.round(view.clientWidth * dpr);
-  view.height = Math.round(view.clientHeight * dpr);
+  view.width = Math.round(box.width * dpr);
+  view.height = Math.round(box.height * dpr);
   if (state) state.dpr = dpr;
 }
 
@@ -1084,8 +1100,33 @@ function loop(now) {
     step(state, dt, input);
     drawWorld(state);
     paintHud();
+  } else if (screen === "select") {
+    drawPreview();
   }
   requestAnimationFrame(loop);
+}
+
+function drawPreview() {
+  const canvas = document.querySelector("#preview");
+  if (!canvas || document.querySelector("#select").hidden) return;
+  const gender = document.querySelector('#gender button[aria-pressed="true"]');
+  const hair = document.querySelector('#hair button[aria-pressed="true"]');
+  const coat = document.querySelector('#coats button[aria-pressed="true"]');
+  const eyes = document.querySelector('#eyes button[aria-pressed="true"]');
+  if (!gender || !hair || !coat || !eyes) return;
+  const cat = makeCat({
+    name: "Miso",
+    gender: gender.dataset.value,
+    hair: hair.dataset.value,
+    coat: coat.dataset.value,
+    eyes: eyes.dataset.value,
+  });
+  cat.x = canvas.width * 0.5;
+  cat.groundY = canvas.height * 0.78;
+  cat.scale = Math.min(canvas.width / 150, canvas.height / 120);
+  const g = canvas.getContext("2d");
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  paintCat(g, cat, performance.now() / 1000);
 }
 
 function bindHold(button, key) {
@@ -1184,6 +1225,16 @@ function boot() {
     fillJumps();
   });
   window.addEventListener("resize", resize);
+  window.addEventListener("orientationchange", () => setTimeout(resize, 60));
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", resize);
+    window.visualViewport.addEventListener("scroll", resize);
+  }
+  document.addEventListener("touchmove", (event) => {
+    if (event.target.closest(".screen")) return;
+    event.preventDefault();
+  }, { passive: false });
+  showHomeTip();
   window.addEventListener("keydown", (event) => {
     audio.unlock();
     const key = event.key.toLowerCase();
@@ -1288,6 +1339,20 @@ function openSettings() {
   document.querySelector("#unlock-all").textContent = progress.unlockAll ? "All levels open" : "Unlock all levels";
   fillJumps();
   show("settings");
+}
+
+function showHomeTip() {
+  const tip = document.querySelector("#home-tip");
+  const safari = /safari/i.test(navigator.userAgent) && !/crios|fxios|chrome|android/i.test(navigator.userAgent);
+  const standalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+  let seen = false;
+  try { seen = localStorage.getItem("sunbeam-home-tip") === "1"; } catch (error) { seen = true; }
+  if (!safari || standalone || seen) return;
+  tip.hidden = false;
+  document.querySelector("#home-tip-close").addEventListener("click", () => {
+    tip.hidden = true;
+    try { localStorage.setItem("sunbeam-home-tip", "1"); } catch (error) { /* private mode */ }
+  });
 }
 
 function syncSound() {

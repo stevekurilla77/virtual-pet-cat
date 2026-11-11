@@ -11,10 +11,20 @@
 html, body {
   margin: 0;
   height: 100%;
+  height: 100dvh;
   background: #1c1916;
   overflow: hidden;
   touch-action: none;
   overscroll-behavior: none;
+}
+
+#app {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 body {
@@ -84,23 +94,35 @@ button { cursor: pointer; border: 0; background: transparent; }
 .screen {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  padding: calc(18px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding:
+    calc(clamp(6px, 1.4dvh, 16px) + env(safe-area-inset-top))
+    calc(clamp(8px, 1.6vw, 16px) + env(safe-area-inset-right))
+    calc(clamp(6px, 1.4dvh, 16px) + env(safe-area-inset-bottom))
+    calc(clamp(8px, 1.6vw, 16px) + env(safe-area-inset-left));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  pointer-events: auto;
 }
 
-.screen[hidden], #hud[hidden], #pad[hidden], #banner[hidden] { display: none !important; }
+.screen[hidden], #hud[hidden], #pad[hidden], #banner[hidden], #home-tip[hidden] { display: none !important; }
 
 .sheet {
-  width: min(560px, 100%);
-  padding: 22px 22px 18px;
+  width: min(640px, 100%);
+  max-height: none;
+  padding: clamp(8px, 1.6dvh, 18px) clamp(10px, 1.8vw, 20px);
+  flex: 0 0 auto;
 }
 
 h1 {
   margin: 0;
-  font-size: clamp(40px, 7vw, 68px);
-  letter-spacing: -0.05em;
-  line-height: 0.9;
+  font-size: clamp(22px, 6.4dvh, 48px);
+  letter-spacing: -0.045em;
+  line-height: 0.95;
 }
 
 .eyebrow {
@@ -112,25 +134,26 @@ h1 {
   color: #8a6248;
 }
 
-.lede { margin: 8px 0 16px; color: #5c4638; }
+.lede { margin: clamp(4px, 0.8dvh, 8px) 0 clamp(6px, 1.2dvh, 12px); color: #5c4638; font-size: clamp(12px, 2.4dvh, 16px); }
 
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .primary, .ghost, .tiny {
   border-radius: 999px;
-  padding: 12px 18px;
+  padding: clamp(7px, 1.3dvh, 12px) clamp(12px, 1.6vw, 18px);
   background: #fff;
   font-weight: 700;
+  font-size: clamp(13px, 2.5dvh, 16px);
 }
 
 .primary { background: #e07a3d; color: white; }
 
 .tiny { padding: 8px 12px; font-size: 13px; }
 
-.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatches { display: flex; gap: clamp(4px, 0.8dvh, 8px); flex-wrap: wrap; }
 .swatch, .seg button {
-  width: 36px;
-  height: 36px;
+  width: clamp(22px, 4.6dvh, 34px);
+  height: clamp(22px, 4.6dvh, 34px);
   border-radius: 50%;
   box-shadow: inset 0 0 0 2px rgba(255,255,255,0.7);
 }
@@ -144,13 +167,70 @@ h1 {
   outline: 3px solid #e07a3d;
 }
 
-label.field { display: grid; gap: 6px; font-weight: 700; margin: 10px 0; }
+label.field { display: grid; gap: 2px; font-weight: 700; margin: clamp(2px, 0.5dvh, 8px) 0; font-size: clamp(12px, 2.3dvh, 15px); }
 input[type="text"], input[type="range"] { width: 100%; }
 input[type="text"] {
   border: 0;
-  border-radius: 14px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  padding: clamp(6px, 1dvh, 10px) 10px;
   background: white;
+}
+
+.select-sheet {
+  width: min(980px, 100%);
+  display: grid;
+  grid-template-columns: minmax(108px, 30%) minmax(0, 1fr);
+  gap: clamp(8px, 1.4vw, 16px);
+  align-items: center;
+}
+
+.preview-col { min-width: 0; }
+.controls-col { min-width: 0; display: grid; gap: clamp(3px, 0.6dvh, 8px); align-content: center; }
+.choice-row { display: flex; flex-wrap: wrap; gap: 6px; }
+#preview {
+  width: 100%;
+  height: auto;
+  max-height: 42dvh;
+  display: block;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+#home-tip {
+  position: absolute;
+  z-index: 7;
+  left: 50%;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  margin: 0;
+  max-width: min(560px, calc(100% - 24px));
+  padding: 8px 10px 8px 14px;
+  border-radius: 999px;
+  background: rgba(44, 32, 24, 0.88);
+  color: #fff8f2;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+#home-tip button {
+  border-radius: 999px;
+  background: #fff;
+  color: #2c241c;
+  font-weight: 700;
+  padding: 6px 10px;
+}
+
+@media (max-height: 420px) {
+  .padbtn { width: 54px; height: 54px; border-radius: 18px; font-size: 15px; }
+  .padbtn.small { width: 46px; height: 46px; }
+  .cluster { gap: 6px; bottom: calc(6px + env(safe-area-inset-bottom)); }
+  #hud { padding-top: calc(4px + env(safe-area-inset-top)); }
+  .hearts { font-size: 16px; }
+  #level-name, #fish-hud { padding: 4px 8px; font-size: 13px; }
+  #banner { top: calc(36px + env(safe-area-inset-top)); font-size: 12px; }
 }
 
 #hud {

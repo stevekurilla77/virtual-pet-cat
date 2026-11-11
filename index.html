@@ -4,12 +4,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#f3c7aa">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1c1916">
   <title>Sunbeam</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/play.css">
 </head>
 <body>
+  <div id="app">
   <canvas id="view" aria-label="Sunbeam, a side-scrolling cat adventure"></canvas>
   <div id="rotate"><p>Turn your phone sideways.<br>The rooms are wider that way.</p></div>
   <div id="overlay">
@@ -26,17 +31,24 @@
       </div>
     </section>
     <section id="select" class="screen" hidden>
-      <div class="sheet glass">
-        <p class="eyebrow">Your cat</p>
-        <h1 id="select-title">Who is going?</h1>
-        <label class="field">Name <input id="cat-name" maxlength="14" placeholder="Miso" autocomplete="off"></label>
-        <div class="row seg" id="gender"></div>
-        <div class="row seg" id="hair"></div>
-        <div class="swatches" id="coats"></div>
-        <div class="swatches" id="eyes"></div>
-        <div class="row">
-          <button id="begin" class="primary" type="button">Into the living room</button>
-          <button id="back-title" class="ghost" type="button">Back</button>
+      <div class="sheet glass select-sheet">
+        <div class="preview-col">
+          <p class="eyebrow">Your cat</p>
+          <canvas id="preview" width="320" height="240" aria-label="Preview of your cat"></canvas>
+        </div>
+        <div class="controls-col">
+          <h1 id="select-title">Who is going?</h1>
+          <label class="field">Name <input id="cat-name" maxlength="14" placeholder="Miso" autocomplete="off"></label>
+          <div class="choice-row">
+            <div class="row seg" id="gender"></div>
+            <div class="row seg" id="hair"></div>
+          </div>
+          <div class="swatches" id="coats"></div>
+          <div class="swatches" id="eyes"></div>
+          <div class="row">
+            <button id="begin" class="primary" type="button">Into the living room</button>
+            <button id="back-title" class="ghost" type="button">Back</button>
+          </div>
         </div>
       </div>
     </section>
@@ -100,6 +112,8 @@
       <button class="padbtn" id="scratch" type="button" aria-label="Scratch">Claw</button>
       <button class="padbtn" id="jump" type="button" aria-label="Jump">Jump</button>
     </div>
+  </div>
+  <p id="home-tip" hidden>Tip: Share, then Add to Home Screen, for a full screen. <button id="home-tip-close" type="button">OK</button></p>
   </div>
   <script type="module" src="js/play.js"></script>
 </body>
