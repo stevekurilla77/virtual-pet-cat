@@ -93,6 +93,12 @@ export function paintCat(ctx, cat, time) {
   ctx.rotate(rot);
   ctx.translate(0, 24);
 
+  if (cat.upright) {
+    uprightSwipe(ctx, cat, time);
+    ctx.restore();
+    return;
+  }
+
   const scratch = Math.max(0, Math.min(1, cat.scratch || 0));
   if (scratch < 0.98 && cat.back < 0.98) {
     ctx.save();
@@ -126,7 +132,12 @@ export function paintCat(ctx, cat, time) {
   ctx.restore();
 }
 
+function noteBody(cat) {
+  if (cat._countBodies) cat._bodies = (cat._bodies || 0) + 1;
+}
+
 function active(ctx, cat, time) {
+  noteBody(cat);
   const m = cat.m;
   const f = cat.app.hair === "long" ? 1 : 0;
   const breath = Math.sin(time * (cat.asleep ? 1.5 : 2.6)) * (cat.asleep ? 1.6 : 0.7);
@@ -408,6 +419,10 @@ export function rumpAnchor(cat, time = 0) {
   const fluff = f * 9;
   const tuck = m.legTuck == null ? 1 : m.legTuck;
   if (cat.inBox) return { x: -9, y: 13, mode: "box" };
+  if (cat.upright) {
+    const pose = uprightPose(cat);
+    return { x: pose.rump.x, y: pose.rump.y, mode: "upright" };
+  }
   if ((cat.scratch || 0) > 0.72) return { x: -8, y: -22, mode: "scratch" };
   if ((cat.curl || 0) > 0.72) {
     const rx = 22 + f * 5;
@@ -777,7 +792,115 @@ function collar(ctx) {
   ctx.restore();
 }
 
+function uprightPose(cat) {
+  const rise = Math.max(0, Math.min(1, cat.rise == null ? 1 : cat.rise));
+  const bodyX = 10 * (1 - rise);
+  const bodyY = -16 - rise * 20;
+  const bodyRx = 20 - rise * 6;
+  const bodyRy = 12 + rise * 3;
+  return {
+    rise,
+    bodyX,
+    bodyY,
+    bodyRx,
+    bodyRy,
+    rump: { x: bodyX - bodyRx * 0.82, y: bodyY + bodyRy * 0.15 },
+    hipX: bodyX - bodyRx * 0.35,
+    hipY: bodyY + bodyRy * 0.45,
+    shoulderX: bodyX + bodyRx * 0.15,
+    shoulderY: bodyY - bodyRy * 0.15,
+    headX: bodyX + (1 - rise) * bodyRx * 0.62 + rise * 1,
+    headY: bodyY - bodyRy * (0.85 + rise * 0.25),
+  };
+}
+
+function uprightSwipe(ctx, cat, time) {
+  noteBody(cat);
+  const f = cat.app.hair === "long" ? 1 : 0;
+  const colors = tone(cat.app.coat);
+  const pose = uprightPose(cat);
+  const { rise } = pose;
+  const swing = Math.sin((cat.scratchPhase || 0) * Math.PI * 2);
+  const liftWas = cat.m.tailLift;
+  cat.m.tailLift = 1;
+  tail(ctx, cat, cat.m || {}, time, f, colors);
+  cat.m.tailLift = liftWas;
+
+  const fatLimb = (ax, ay, bx, by, width) => {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = (-dy / len) * width * 0.5;
+    const ny = (dx / len) * width * 0.5;
+    ctx.fillStyle = colors.mid;
+    ctx.beginPath();
+    ctx.moveTo(ax + nx, ay + ny);
+    ctx.lineTo(bx + nx * 0.8, by + ny * 0.8);
+    ctx.lineTo(bx - nx * 0.8, by - ny * 0.8);
+    ctx.lineTo(ax - nx, ay - ny);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(ax, ay, width * 0.5, 0, Math.PI * 2);
+    ctx.arc(bx, by, width * 0.38, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  const hind = (hipX, footX) => {
+    fatLimb(hipX, pose.hipY, footX, 0, 11 + f * 2);
+    pawShape(ctx, footX, 2.2, colors.light, false);
+  };
+  hind(pose.hipX - 2, pose.hipX - 6);
+  hind(pose.hipX + 8, pose.hipX + 12);
+
+  ctx.beginPath();
+  ctx.ellipse(pose.bodyX, pose.bodyY, pose.bodyRx + f * 2, pose.bodyRy + f, rise * -0.08, 0, Math.PI * 2);
+  shade(ctx, pose.bodyX - 8, pose.bodyY - pose.bodyRy, pose.bodyX + 8, pose.bodyY + pose.bodyRy, colors.light, colors.mid, colors.dark);
+  ctx.fill();
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(pose.bodyX, pose.bodyY, pose.bodyRx + f * 2, pose.bodyRy + f, rise * -0.08, 0, Math.PI * 2);
+  ctx.clip();
+  patternBody(ctx, cat, pose.bodyY, 1 - rise);
+  ctx.fillStyle = colors.belly;
+  ctx.globalAlpha = 0.92;
+  ctx.beginPath();
+  ctx.ellipse(pose.bodyX + pose.bodyRx * 0.25, pose.bodyY + 2, 5 + rise * 2, pose.bodyRy * 0.55, 0.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  const arm = (drop, extend) => {
+    const pawX = pose.shoulderX + 8 + rise * (12 + extend * 20);
+    const pawY = pose.shoulderY + (1 - rise) * 16 + rise * (8 - extend * 22) + drop;
+    fatLimb(pose.shoulderX, pose.shoulderY + drop * 0.3, pawX, pawY, 9 + f);
+    pawShape(ctx, pawX, pawY, colors.light, false);
+    if (rise > 0.78 && extend > 0.55) {
+      ctx.save();
+      ctx.translate(pawX + 5, pawY);
+      ctx.strokeStyle = "rgba(255, 250, 244, 0.95)";
+      ctx.lineCap = "round";
+      for (let i = 0; i < 3; i++) {
+        ctx.globalAlpha = 0.8 - i * 0.2;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(-1, 1, 8 + i * 5, -1.15, 0.45);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  };
+  arm(0, Math.max(0, swing));
+  arm(7, Math.max(0, -swing));
+
+  ctx.save();
+  ctx.translate(pose.headX, pose.headY);
+  ctx.rotate((1 - rise) * 0.15);
+  head(ctx, cat, time, f, colors);
+  ctx.restore();
+}
+
 function scratching(ctx, cat, time) {
+  noteBody(cat);
   const f = cat.app.hair === "long" ? 1 : 0;
   const colors = tone(cat.app.coat);
   const swing = Math.sin(cat.scratchPhase || time * 14);
@@ -835,6 +958,7 @@ function scratching(ctx, cat, time) {
 }
 
 function curled(ctx, cat, time) {
+  noteBody(cat);
   const f = cat.app.hair === "long" ? 1 : 0;
   const colors = tone(cat.app.coat);
   const breath = Math.sin(time * 1.4) * 1.1;
@@ -870,6 +994,7 @@ function curled(ctx, cat, time) {
 }
 
 function rolled(ctx, cat, time) {
+  noteBody(cat);
   const colors = tone(cat.app.coat);
   const f = cat.app.hair === "long" ? 1 : 0;
   const kick = Math.sin(time * 9) * (cat.backKick || 0);

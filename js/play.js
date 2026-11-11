@@ -22,46 +22,29 @@ function solid(x, y, w, h, kind = "block") {
   return { x, y, w, h, kind };
 }
 
-function arcFish(list, x0, x1, y, n, goldenIndex = -1) {
+function addFish(list, x, y, golden = false) {
+  list.push({ x, y, golden, phase: list.length * 0.47, got: false });
+}
+
+function arcFish(list, x0, x1, y, n) {
   for (let i = 0; i < n; i++) {
     const t = n === 1 ? 0.5 : i / (n - 1);
-    list.push({
-      x: x0 + (x1 - x0) * t,
-      y: y - Math.sin(t * Math.PI) * 78,
-      golden: i === goldenIndex,
-      phase: i * 0.7,
-    });
+    addFish(list, x0 + (x1 - x0) * t, y - Math.sin(t * Math.PI) * 58);
   }
 }
 
-function lineFish(list, x, y, n, dx, goldenIndex = -1) {
-  for (let i = 0; i < n; i++) {
-    list.push({ x: x + dx * i, y, golden: i === goldenIndex, phase: i * 0.4 });
-  }
+function lineFish(list, x, y, n, dx = 36) {
+  for (let i = 0; i < n; i++) addFish(list, x + dx * i, y);
 }
 
 function buildLevel(spec) {
   const fish = [];
-  const floors = spec.solids.filter((s) => s.kind === "floor").sort((a, b) => a.x - b.x);
-  for (let i = 0; i < floors.length - 1; i++) {
-    const left = floors[i].x + floors[i].w;
-    const right = floors[i + 1].x;
-    if (right - left > 36 && right - left < 240) arcFish(fish, left - 16, right + 16, floors[i].y - 8, 6);
+  for (const group of spec.groups) {
+    if (group.kind === "arc") arcFish(fish, group.x0, group.x1, group.y, group.n);
+    else if (group.kind === "line") lineFish(fish, group.x, group.y, group.n, group.dx);
+    else addFish(fish, group.x, group.y, Boolean(group.golden));
   }
-  for (const block of spec.solids) {
-    if (block.kind === "floor" || block.w < 70) continue;
-    const count = Math.max(3, Math.floor(block.w / 42));
-    for (let i = 0; i < count; i++) {
-      const t = count === 1 ? 0.5 : i / (count - 1);
-      fish.push({ x: block.x + 18 + t * (block.w - 36), y: block.y - 26, golden: false, phase: i });
-    }
-  }
-  for (const extra of spec.fish || []) fish.push({ golden: false, phase: Math.random() * 5, ...extra });
-  for (const enemy of spec.enemies) {
-    fish.push({ x: enemy.x + 10, y: enemy.y - 54, golden: false, phase: 1.2 });
-  }
-  fish.push({ x: spec.owner.x - 40, y: GROUND - 150, golden: true, phase: 0.2 });
-  return { ...spec, fish, fishValue: fish.reduce((sum, item) => sum + (item.golden ? 5 : 1), 0) };
+  return { ...spec, fish, fishValue: fish.length };
 }
 
 const LEVELS = [
@@ -97,12 +80,20 @@ const LEVELS = [
       { kind: "bird", x: 2050, y: 180, min: 1900, max: 2200 },
       { kind: "fish", x: 2360, y: GROUND - 20, min: 2300, max: 2420 },
     ],
-    fish: [
-      { x: 250, y: GROUND - 120, golden: false },
-      { x: 300, y: GROUND - 150, golden: false },
-      { x: 1480, y: GROUND - 210, golden: true },
-      { x: 900, y: GROUND - 40 },
-      { x: 980, y: GROUND - 70 },
+    groups: [
+      { kind: "line", x: 760, y: GROUND - 36, n: 4, dx: 40 },
+      { kind: "arc", x0: 990, x1: 1190, y: GROUND - 28, n: 4 },
+      { kind: "line", x: 1700, y: GROUND - 36, n: 5, dx: 38 },
+      { kind: "spot", x: 1370, y: GROUND - 112 },
+      { kind: "spot", x: 1510, y: GROUND - 176 },
+      { kind: "spot", x: 1655, y: GROUND - 112 },
+      { kind: "line", x: 1990, y: GROUND - 148, n: 3, dx: 48 },
+      { kind: "arc", x0: 2240, x1: 2460, y: GROUND - 48, n: 3 },
+      { kind: "arc", x0: 2600, x1: 2800, y: GROUND - 28, n: 4 },
+      { kind: "spot", x: 3055, y: GROUND - 78 },
+      { kind: "spot", x: 3195, y: GROUND - 128 },
+      { kind: "line", x: 3480, y: GROUND - 36, n: 3, dx: 40 },
+      { kind: "spot", x: 3980, y: GROUND - 130, golden: true },
     ],
   }),
   buildLevel({
@@ -131,10 +122,18 @@ const LEVELS = [
       { kind: "bird", x: 2200, y: 150, min: 1900, max: 2500 },
       { kind: "squirrel", x: 3000, y: GROUND - 70, min: 2860, max: 3400 },
     ],
-    fish: [
-      { x: 500, y: 180, golden: true },
-      { x: 2100, y: GROUND - 140 },
-      { x: 2180, y: GROUND - 170 },
+    groups: [
+      { kind: "line", x: 150, y: GROUND - 36, n: 4, dx: 38 },
+      { kind: "line", x: 300, y: GROUND - 98, n: 3, dx: 32 },
+      { kind: "arc", x0: 760, x1: 980, y: GROUND - 28, n: 4 },
+      { kind: "line", x: 1040, y: GROUND - 70, n: 4, dx: 36 },
+      { kind: "line", x: 1200, y: GROUND - 138, n: 3, dx: 36 },
+      { kind: "arc", x0: 1600, x1: 1800, y: GROUND - 68, n: 4 },
+      { kind: "line", x: 1880, y: GROUND - 36, n: 4, dx: 38 },
+      { kind: "line", x: 2030, y: GROUND - 108, n: 3, dx: 36 },
+      { kind: "arc", x0: 2620, x1: 2820, y: GROUND - 28, n: 3 },
+      { kind: "line", x: 3200, y: GROUND - 64, n: 3, dx: 40 },
+      { kind: "spot", x: 3520, y: GROUND - 140, golden: true },
     ],
   }),
   buildLevel({
@@ -164,9 +163,19 @@ const LEVELS = [
       { kind: "fish", x: 2620, y: GROUND - 10, min: 2520, max: 2740 },
       { kind: "chicken", x: 3300, y: GROUND - 36, min: 3000, max: 3700 },
     ],
-    fish: [
-      { x: 1900, y: GROUND - 160, golden: true },
-      { x: 2140, y: GROUND - 200 },
+    groups: [
+      { kind: "line", x: 180, y: GROUND - 36, n: 5, dx: 40 },
+      { kind: "arc", x0: 860, x1: 1080, y: GROUND - 28, n: 4 },
+      { kind: "line", x: 1160, y: GROUND - 36, n: 4, dx: 40 },
+      { kind: "arc", x0: 1700, x1: 1900, y: GROUND - 28, n: 4 },
+      { kind: "line", x: 1900, y: GROUND - 98, n: 3, dx: 40 },
+      { kind: "line", x: 2120, y: GROUND - 158, n: 3, dx: 36 },
+      { kind: "line", x: 2220, y: GROUND - 36, n: 4, dx: 38 },
+      { kind: "arc", x0: 2480, x1: 2780, y: GROUND - 20, n: 5 },
+      { kind: "spot", x: 3260, y: GROUND - 88 },
+      { kind: "spot", x: 3510, y: GROUND - 128 },
+      { kind: "line", x: 3680, y: GROUND - 36, n: 3, dx: 40 },
+      { kind: "spot", x: 3840, y: GROUND - 130, golden: true },
     ],
   }),
   buildLevel({
@@ -198,9 +207,21 @@ const LEVELS = [
       { kind: "bird", x: 2300, y: 150, min: 2100, max: 2600 },
       { kind: "mouse", x: 3200, y: GROUND - 22, min: 3000, max: 3600 },
     ],
-    fish: [
-      { x: 1720, y: GROUND - 190, golden: true },
-      { x: 3640, y: GROUND - 210 },
+    groups: [
+      { kind: "line", x: 160, y: GROUND - 36, n: 4, dx: 40 },
+      { kind: "arc", x0: 660, x1: 900, y: GROUND - 28, n: 4 },
+      { kind: "line", x: 900, y: GROUND - 98, n: 3, dx: 40 },
+      { kind: "line", x: 1080, y: GROUND - 36, n: 4, dx: 38 },
+      { kind: "arc", x0: 1340, x1: 1540, y: GROUND - 28, n: 3 },
+      { kind: "line", x: 1700, y: GROUND - 148, n: 3, dx: 36 },
+      { kind: "arc", x0: 1860, x1: 2060, y: GROUND - 28, n: 4 },
+      { kind: "line", x: 2200, y: GROUND - 36, n: 4, dx: 40 },
+      { kind: "arc", x0: 2680, x1: 2900, y: GROUND - 28, n: 4 },
+      { kind: "spot", x: 3460, y: GROUND - 118 },
+      { kind: "spot", x: 3660, y: GROUND - 178 },
+      { kind: "spot", x: 3860, y: GROUND - 118 },
+      { kind: "line", x: 4000, y: GROUND - 36, n: 3, dx: 40 },
+      { kind: "spot", x: 4040, y: GROUND - 140, golden: true },
     ],
   }),
 ];
@@ -307,6 +328,8 @@ function fresh(progress, levelIndex) {
       jumpBuf: 0,
       jumpHeld: false,
       scratch: 0,
+      clawCd: 0,
+      swipeHit: false,
       hurt: 0,
       invuln: 0,
       land: 0,
@@ -424,6 +447,8 @@ function respawn(state) {
   player.wasGround = true;
   player.invuln = 1.7;
   player.hurt = 0.25;
+  player.scratch = 0;
+  player.swipeHit = false;
   state.fishing = null;
   state.snapCam = true;
   state.respawned = true;
@@ -433,13 +458,16 @@ function respawn(state) {
 
 const ACCEL = 1700;
 
+const SWIPE = 0.58;
+const SWIPE_CD = 0.22;
+
 function attackBox(player) {
-  const reach = 52;
+  const reach = 58;
   return {
-    x: player.facing > 0 ? player.x + PW - 6 : player.x - reach,
-    y: player.y + 8,
+    x: player.facing > 0 ? player.x + PW - 8 : player.x - reach + 6,
+    y: player.y - 16,
     w: reach,
-    h: 36,
+    h: 68,
   };
 }
 
@@ -488,9 +516,9 @@ function hurt(state, knock) {
 function collectFish(state, fish) {
   if (fish.got) return;
   fish.got = true;
-  const value = fish.golden ? 5 : 1;
-  state.fishGot += value;
-  state.progress.fishBank += value;
+  const bank = fish.golden ? 3 : 1;
+  if (!fish.bonus) state.fishGot += 1;
+  state.progress.fishBank += bank;
   audio.ding(fish.golden);
   state.particles.push({
     x: fish.x,
@@ -502,16 +530,16 @@ function collectFish(state, fish) {
     kind: "spark",
     color: fish.golden ? "#f0b429" : "#9ee7ff",
   });
-  if (!state.heartAwarded && state.fishGot >= Math.min(25, state.level.fishValue)) {
+  if (!fish.bonus && !state.heartAwarded && state.fishGot >= state.level.fishValue) {
     state.heartAwarded = true;
     state.player.health = Math.min(5, state.player.health + 1);
-    state.banner = "A pocket of fish. Extra life.";
+    state.banner = "Every fish. Extra life.";
     state.bannerT = 1.6;
   }
-  if (state.progress.fishBank >= 100) {
-    state.progress.fishBank -= 100;
+  if (state.progress.fishBank >= 80) {
+    state.progress.fishBank -= 80;
     state.player.health = Math.min(5, state.player.health + 1);
-    state.banner = "100 fish. Another life.";
+    state.banner = "80 fish. Another life.";
     state.bannerT = 1.8;
   }
 }
@@ -572,7 +600,7 @@ function updateEnemies(state, dt) {
     }
     nearest = Math.min(nearest, Math.abs(enemy.x - player.x));
     const box = { x: enemy.x - 16, y: enemy.y - 16, w: 36, h: 32 };
-    if (player.scratch > 0 && rectsOverlap(attackBox(player), box)) {
+    if (player.swipeHit && rectsOverlap(attackBox(player), box)) {
       shoo(state, enemy);
       continue;
     }
@@ -598,7 +626,6 @@ function updatePose(state, dt) {
   let pose = "stand";
   if (state.won) pose = "sit";
   else if (player.hurt > 0) pose = "sit";
-  else if (player.scratch > 0) pose = "scratch";
   else if (!player.onGround && player.vy < 0) pose = "pounce";
   else if (!player.onGround) pose = "stretch";
   else if (Math.abs(player.vx) > 150) pose = "run";
@@ -606,9 +633,18 @@ function updatePose(state, dt) {
   player.pose = pose;
   const target = POSES[pose] || POSES.stand;
   for (const key of POSE_KEYS) cat.m[key] += (target[key] - cat.m[key]) * Math.min(1, dt * 8);
-  const scratchT = pose === "scratch" ? 1 : 0;
-  cat.scratch += (scratchT - cat.scratch) * Math.min(1, dt * 12);
-  cat.scratchPhase += dt * (pose === "scratch" ? 18 : 2);
+  const swiping = player.scratch > 0;
+  cat.upright = swiping;
+  cat.scratch = 0;
+  if (swiping) {
+    const along = 1 - player.scratch / SWIPE;
+    cat.rise = along < 0.18 ? along / 0.18 : along < 0.78 ? 1 : Math.max(0, 1 - (along - 0.78) / 0.22);
+    cat.scratchPhase += dt * 6.5;
+    player.swipeHit = along > 0.16 && along < 0.8;
+  } else {
+    cat.rise = 0;
+    player.swipeHit = false;
+  }
   cat.x = player.x + PW / 2;
   cat.groundY = player.y + PH;
   cat.hop = 0;
@@ -618,15 +654,16 @@ function updatePose(state, dt) {
   cat.gait = pose === "run" ? "gallop" : "walk";
   cat.gaitBlend += ((pose === "run" || pose === "walk" ? 1 : 0) - cat.gaitBlend) * Math.min(1, dt * 6);
   cat.walkPhase = (cat.walkPhase + Math.abs(player.vx) * dt * 0.01) % 1;
-  cat.drawRot = pose === "pounce" ? -0.35 * player.facing * 0 : (pose === "stretch" ? 0.25 : 0);
-  cat.swat = pose === "scratch" ? 1 : 0;
+  cat.drawRot = swiping ? 0 : (pose === "stretch" ? 0.25 : 0);
+  cat.swat = swiping ? 1 : 0;
   cat.purr = state.won ? 1 : Math.max(0, cat.purr - dt);
   cat.mouth = player.hurt > 0 ? "meow" : "none";
   cat.squint = player.hurt > 0 ? 1 : 0;
   cat.tailAmp = pose === "run" ? 12 : 7;
   cat.tailSpeed = pose === "run" ? 6 : 1.5;
   if (player.land > 0) player.land -= dt;
-  if (player.scratch > 0) player.scratch -= dt;
+  if (player.scratch > 0) player.scratch = Math.max(0, player.scratch - dt);
+  if (player.clawCd > 0) player.clawCd = Math.max(0, player.clawCd - dt);
   if (player.hurt > 0) player.hurt -= dt;
   if (player.invuln > 0) player.invuln -= dt;
 }
@@ -654,7 +691,7 @@ function updateFishing(state, dt, input) {
   fish.t += dt;
   if (!fish.caught && input.jumpPressed && fish.t > fish.bite && fish.t < fish.bite + 0.42) {
     fish.caught = true;
-    const prize = { x: state.player.x + 20, y: state.player.y - 10, golden: Math.random() < 0.25, phase: 0, got: false };
+    const prize = { x: state.player.x + 20, y: state.player.y - 10, golden: Math.random() < 0.25, phase: 0, got: false, bonus: true };
     collectFish(state, prize);
     state.banner = prize.golden ? "A golden fish on the line." : "A fish on the line.";
     state.bannerT = 1.2;
@@ -691,7 +728,11 @@ function step(state, dt, input) {
   if (state.mode !== "play" || state.won) return;
   state.time += dt;
   const player = state.player;
-  if (input.scratchPressed) player.scratch = 0.24;
+  if (input.scratchPressed && player.scratch <= 0 && player.clawCd <= 0) {
+    player.scratch = SWIPE;
+    player.clawCd = SWIPE + SWIPE_CD;
+    audio.scratch();
+  }
   if (input.fishPressed) tryFish(state);
   if (state.fishing) updateFishing(state, dt, input);
   else movePlayer(state, dt, input);
@@ -1293,7 +1334,7 @@ function showComplete(current) {
 function paintHud() {
   if (!state) return;
   hearts.textContent = "♥".repeat(Math.max(0, state.player.health)) + "♡".repeat(Math.max(0, 3 - state.player.health));
-  fishCount.textContent = String(state.fishGot);
+  fishCount.textContent = `${state.fishGot}/${state.level.fishValue}`;
   banner.hidden = state.bannerT <= 0;
   banner.textContent = state.banner;
   const nearWater = state.level.water.some((water) => {
@@ -1498,7 +1539,7 @@ function fillSelect() {
   const cat = progress.cat;
   document.querySelector("#cat-name").value = cat.name || "Miso";
   makeSeg("#gender", [["girl", "Girl"], ["boy", "Boy"]], cat.gender);
-  makeSeg("#hair", [["short", "Short hair"], ["long", "Long hair"]], cat.hair);
+  makeSeg("#hair", [["short", "Short"], ["long", "Long"]], cat.hair);
   const coats = document.querySelector("#coats");
   coats.replaceChildren(...COAT_ORDER.map((id) => {
     const button = document.createElement("button");
@@ -1592,6 +1633,55 @@ function snapshot() {
   paintHud();
 }
 
+const SWIPE_FRAMES = [
+  { label: "Rise", rise: 0.08, phase: 0.02 },
+  { label: "Up", rise: 0.42, phase: 0.08 },
+  { label: "Stand", rise: 0.82, phase: 0.16 },
+  { label: "Swipe", rise: 1, phase: 0.25 },
+  { label: "Cross", rise: 1, phase: 0.5 },
+  { label: "Swipe", rise: 1, phase: 0.75 },
+  { label: "Follow", rise: 1, phase: 0.92 },
+  { label: "Drop", rise: 0.3, phase: 1.02 },
+];
+
+function swipeSheet() {
+  const counts = [];
+  document.querySelector("#overlay").hidden = true;
+  document.querySelector("#hud").hidden = true;
+  document.querySelector("#pad").hidden = true;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const w = view.width;
+  const h = view.height;
+  ctx.fillStyle = "#f4e7d6";
+  ctx.fillRect(0, 0, w, h);
+  const cols = 4;
+  const cellW = w / cols;
+  const cellH = h / 2;
+  SWIPE_FRAMES.forEach((frame, index) => {
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const cat = makeCat({ name: "Miso", gender: "girl", hair: "short", coat: "orange", eyes: "green" });
+    cat.upright = true;
+    cat.rise = frame.rise;
+    cat.scratchPhase = frame.phase;
+    cat.scratch = 0;
+    cat.facing = 1;
+    cat.scale = Math.min(cellW, cellH) / 118;
+    cat.x = col * cellW + cellW * 0.4;
+    cat.groundY = row * cellH + cellH * 0.8;
+    cat.hideShadow = false;
+    cat._countBodies = true;
+    cat._bodies = 0;
+    paintCat(ctx, cat, 0.4);
+    counts.push(cat._bodies);
+    ctx.fillStyle = "#5c4638";
+    ctx.font = "600 14px 'Avenir Next', 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`${index + 1}  ${frame.label}`, col * cellW + cellW / 2, row * cellH + 22);
+  });
+  return counts;
+}
+
 window.sunbeam = {
   audio,
   get state() { return state; },
@@ -1599,6 +1689,7 @@ window.sunbeam = {
   simulate,
   testPit,
   snapshot,
+  swipeSheet,
   LEVELS,
   show,
 };

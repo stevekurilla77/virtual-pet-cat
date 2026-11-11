@@ -23,7 +23,7 @@
         <p class="eyebrow">Sunbeam</p>
         <h1>Home is this way.</h1>
         <p class="lede">A small cat, four rooms, and the person waiting at the end of each one.</p>
-        <div class="row">
+        <div class="row actions">
           <button id="play" class="primary" type="button">Play</button>
           <button id="quiet" class="ghost" type="button">The quiet room</button>
           <button id="title-settings" class="ghost" type="button">Settings</button>
@@ -34,18 +34,33 @@
       <div class="sheet glass select-sheet">
         <div class="preview-col">
           <p class="eyebrow">Your cat</p>
-          <canvas id="preview" width="320" height="240" aria-label="Preview of your cat"></canvas>
+          <div class="preview-frame">
+            <canvas id="preview" width="320" height="240" aria-label="Preview of your cat"></canvas>
+          </div>
         </div>
         <div class="controls-col">
           <h1 id="select-title">Who is going?</h1>
-          <label class="field">Name <input id="cat-name" maxlength="14" placeholder="Miso" autocomplete="off"></label>
-          <div class="choice-row">
-            <div class="row seg" id="gender"></div>
-            <div class="row seg" id="hair"></div>
+          <div class="pick">
+            <span>Name</span>
+            <input id="cat-name" type="text" maxlength="14" placeholder="Miso" autocomplete="off" aria-label="Name">
           </div>
-          <div class="swatches" id="coats"></div>
-          <div class="swatches" id="eyes"></div>
-          <div class="row">
+          <div class="pick">
+            <span>Cat</span>
+            <div class="seg" id="gender" role="group" aria-label="Cat"></div>
+          </div>
+          <div class="pick">
+            <span>Fur</span>
+            <div class="seg" id="hair" role="group" aria-label="Fur"></div>
+          </div>
+          <div class="pick">
+            <span>Coat</span>
+            <div class="swatches" id="coats" role="group" aria-label="Coat"></div>
+          </div>
+          <div class="pick">
+            <span>Eyes</span>
+            <div class="swatches" id="eyes" role="group" aria-label="Eyes"></div>
+          </div>
+          <div class="footer-row">
             <button id="begin" class="primary" type="button">Into the living room</button>
             <button id="back-title" class="ghost" type="button">Back</button>
           </div>
@@ -58,7 +73,7 @@
         <h1 id="complete-title">They found you.</h1>
         <p id="stars" class="lede">★★★</p>
         <p id="complete-copy" class="lede"></p>
-        <div class="row">
+        <div class="row actions">
           <button id="next-level" class="primary" type="button">Next room</button>
           <button id="replay" class="ghost" type="button">Play again</button>
           <button id="to-title" class="ghost" type="button">Title</button>
@@ -77,7 +92,7 @@
           <button id="unlock-all" class="tiny" type="button">Unlock all levels</button>
         </div>
         <div class="row" id="level-jumps"></div>
-        <div class="row">
+        <div class="row actions">
           <button id="credits-open" class="ghost" type="button">Credits</button>
           <button id="settings-close" class="primary" type="button">Close</button>
         </div>
