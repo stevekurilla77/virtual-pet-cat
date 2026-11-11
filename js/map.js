@@ -253,6 +253,271 @@ function house(g, x, y, w, h, wall, roof, door) {
   g.fill();
 }
 
+function tileFloor(g, x, y, w, h, a, b) {
+  for (let row = 0; row < h; row += 16) {
+    for (let col = 0; col < w; col += 16) {
+      g.fillStyle = ((row + col) / 16) % 2 ? a : b;
+      g.fillRect(x + col, y + row, 16, 16);
+    }
+  }
+}
+
+function paintClinic(g) {
+  g.fillStyle = "#8d97a3";
+  g.fillRect(2340, 500, 240, 48);
+  g.fillStyle = "#f4f6f4";
+  for (let x = 2356; x < 2560; x += 32) g.fillRect(x, 516, 16, 10);
+  g.fillStyle = "#5c6772";
+  round(g, 2468, 448, 168, 86, 10);
+  g.fill();
+  g.fillStyle = "#d5e7f2";
+  round(g, 2484, 462, 70, 32, 6);
+  g.fill();
+  g.fillStyle = "#2c343c";
+  g.beginPath();
+  g.arc(2504, 524, 9, 0, Math.PI * 2);
+  g.arc(2540, 524, 9, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#f2c14b";
+  g.fillRect(2408, 360, 10, 150);
+  g.beginPath();
+  g.arc(2413, 348, 18, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#c9d4da";
+  round(g, 2568, 470, 54, 28, 6);
+  g.fill();
+  g.fillStyle = "#3f8f62";
+  g.fillRect(2388, 488, 28, 18);
+  g.beginPath();
+  g.ellipse(2396, 484, 12, 8, 0, 0, Math.PI * 2);
+  g.ellipse(2412, 490, 9, 6, 0, 0, Math.PI * 2);
+  g.fill();
+
+  g.fillStyle = "#f7fbfc";
+  round(g, 2520, 230, 1160, 400, 14);
+  g.fill();
+  g.fillStyle = "#e7eef2";
+  g.fillRect(2520, 300, 1140, 18);
+  tileFloor(g, 2580, 360, 1040, 180, "#e5f3ee", "#f8fbfb");
+  g.fillStyle = "#d5e1e7";
+  g.fillRect(2520, 230, 1160, 22);
+  g.fillStyle = "#1f6f78";
+  round(g, 2588, 246, 250, 48, 8);
+  g.fill();
+  g.fillStyle = "#fff";
+  g.font = "800 22px 'Avenir Next', 'Segoe UI', sans-serif";
+  g.textAlign = "left";
+  g.fillText("Paw +", 2688, 278);
+  g.fillStyle = "#e23b4a";
+  g.fillRect(2644, 256, 10, 26);
+  g.fillRect(2634, 266, 30, 8);
+  g.fillStyle = "#f28b76";
+  g.beginPath();
+  g.ellipse(2620, 268, 10, 7, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#e07a8c";
+  g.fillRect(2540, 300, 180, 16);
+  g.fillStyle = "#f7c6d0";
+  for (let i = 0; i < 5; i++) g.fillRect(2544 + i * 36, 300, 16, 16);
+  g.fillStyle = "rgba(186, 224, 236, 0.9)";
+  round(g, 2548, 324, 52, 86, 4);
+  g.fill();
+  round(g, 2608, 324, 52, 86, 4);
+  g.fill();
+  g.fillStyle = "#b7c3ca";
+  g.beginPath();
+  g.moveTo(2530, 418);
+  g.lineTo(2700, 448);
+  g.lineTo(2700, 462);
+  g.lineTo(2530, 436);
+  g.fill();
+  g.fillStyle = "#8d6a45";
+  round(g, 2600, 452, 48, 12, 4);
+  g.fill();
+  g.fillStyle = "#5c4638";
+  g.font = "700 16px 'Avenir Next', 'Segoe UI', sans-serif";
+  g.fillText("Escape from the Vet", 2868, 348);
+
+  g.fillStyle = "#8fb8d6";
+  round(g, 2724, 390, 36, 48, 8);
+  g.fill();
+  round(g, 2772, 404, 36, 48, 8);
+  g.fill();
+  g.fillStyle = "#d7c4a4";
+  round(g, 2736, 448, 70, 18, 4);
+  g.fill();
+  g.fillStyle = "#1f6f9a";
+  round(g, 2816, 378, 78, 52, 6);
+  g.fill();
+  g.fillStyle = "rgba(214, 236, 246, 0.85)";
+  g.fillRect(2824, 386, 62, 36);
+  g.fillStyle = "#6aa7c9";
+  round(g, 2744, 250, 48, 32, 4);
+  g.fill();
+  g.fillStyle = "#3f6f8a";
+  round(g, 2688, 248, 42, 28, 4);
+  g.fill();
+  g.fillStyle = "#3f8f62";
+  g.fillRect(2796, 330, 10, 36);
+  g.beginPath();
+  g.arc(2801, 324, 14, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#e7d3b0";
+  round(g, 2668, 430, 36, 28, 4);
+  g.fill();
+  g.fillStyle = "#c9843a";
+  g.beginPath();
+  g.ellipse(2708, 470, 16, 10, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#5c4638";
+  g.fillRect(2688, 446, 10, 28);
+  g.beginPath();
+  g.arc(2693, 442, 7, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#d7dde2";
+  round(g, 2764, 468, 42, 28, 6);
+  g.fill();
+  g.fillStyle = "#f28b76";
+  g.beginPath();
+  g.arc(2784, 478, 6, 0, Math.PI * 2);
+  g.fill();
+
+  g.strokeStyle = "#9aafb8";
+  g.lineWidth = 4;
+  g.strokeRect(2860, 300, 240, 210);
+  g.fillStyle = "#d5dde3";
+  round(g, 2920, 392, 110, 22, 6);
+  g.fill();
+  g.fillRect(2936, 414, 10, 40);
+  g.fillRect(3004, 414, 10, 40);
+  g.fillStyle = "#c9d4da";
+  round(g, 2876, 330, 48, 64, 4);
+  g.fill();
+  g.fillStyle = "#fff6c8";
+  g.beginPath();
+  g.arc(3070, 330, 18, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = "#5c4638";
+  g.lineWidth = 3;
+  g.beginPath();
+  g.arc(3048, 390, 12, 0.3, Math.PI);
+  g.stroke();
+  g.fillStyle = "#f7f1ea";
+  g.fillRect(2876, 410, 40, 48);
+  g.strokeStyle = "#c9b8a4";
+  g.strokeRect(2884, 420, 24, 18);
+  g.fillStyle = "#e7eef2";
+  g.strokeRect(2872, 470, 36, 28);
+
+  g.fillStyle = "#f2c14b";
+  g.beginPath();
+  g.ellipse(2900, 575, 22, 12, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#fff6ee";
+  g.beginPath();
+  g.ellipse(2900, 572, 12, 6, 0, 0, Math.PI * 2);
+  g.fill();
+
+  g.fillStyle = "#b7c4cc";
+  round(g, 3060, 300, 300, 46, 10);
+  g.fill();
+  g.fillStyle = "#8d9aa3";
+  for (let x = 3080; x < 3340; x += 36) {
+    g.fillRect(x, 308, 22, 28);
+    g.fillRect(x + 6, 316, 10, 4);
+  }
+  g.strokeStyle = "#8aa0ab";
+  g.lineWidth = 3;
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 3; col++) {
+      g.strokeRect(3076 + col * 48, 360 + row * 42, 40, 34);
+      g.fillStyle = "#f7f1ea";
+      g.fillRect(3082 + col * 48, 366 + row * 42, 28, 22);
+    }
+  }
+  g.fillStyle = "#e7d3b0";
+  g.beginPath();
+  g.ellipse(3096, 376, 8, 6, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#f28b76";
+  g.beginPath();
+  g.ellipse(3144, 418, 7, 5, 0, 0, Math.PI * 2);
+  g.fill();
+
+  g.strokeStyle = "#9aafb8";
+  g.lineWidth = 4;
+  g.strokeRect(3220, 360, 200, 170);
+  for (let shelf = 0; shelf < 3; shelf++) {
+    g.fillStyle = "#f7fbfc";
+    g.fillRect(3236, 384 + shelf * 40, 168, 12);
+  }
+  g.fillStyle = "#7ec8c3";
+  round(g, 3252, 360, 16, 28, 3);
+  g.fill();
+  g.fillStyle = "#e07a8c";
+  round(g, 3280, 356, 18, 32, 3);
+  g.fill();
+  g.fillStyle = "#f2c14b";
+  g.fillRect(3316, 396, 28, 20);
+  g.fillStyle = "#dfe7ea";
+  g.fillRect(3356, 430, 40, 24);
+  g.fillStyle = "#f4e4c4";
+  g.fillRect(3248, 470, 36, 22);
+
+  g.fillStyle = "#eef4f6";
+  g.fillRect(3288, 236, 120, 58);
+  g.strokeStyle = "#9aa7b2";
+  g.strokeRect(3288, 236, 120, 58);
+  g.strokeStyle = "#d5dde3";
+  g.lineWidth = 3;
+  g.beginPath();
+  g.moveTo(3310, 274);
+  g.lineTo(3340, 248);
+  g.lineTo(3376, 276);
+  g.stroke();
+  g.fillStyle = "#f7f1ea";
+  g.beginPath();
+  g.arc(3348, 258, 10, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#d7e4ea";
+  g.fillRect(3168, 248, 40, 12);
+  g.fillRect(3220, 236, 12, 28);
+  g.fillStyle = "#7ec8c3";
+  round(g, 3236, 252, 16, 22, 3);
+  g.fill();
+
+  g.strokeStyle = "#9aafb8";
+  g.lineWidth = 4;
+  g.strokeRect(3440, 340, 230, 200);
+  g.fillStyle = "#d5e0e6";
+  round(g, 3464, 390, 100, 20, 6);
+  g.fill();
+  g.fillStyle = "#2c343c";
+  round(g, 3476, 372, 40, 20, 3);
+  g.fill();
+  g.fillStyle = "#e23b4a";
+  g.fillRect(3488, 378, 16, 4);
+  g.fillStyle = "rgba(186, 224, 236, 0.95)";
+  round(g, 3568, 380, 78, 120, 8);
+  g.fill();
+  g.strokeStyle = "#5c6b78";
+  g.strokeRect(3568, 380, 78, 120);
+  g.fillStyle = "#f2c14b";
+  g.font = "800 15px 'Avenir Next', 'Segoe UI', sans-serif";
+  g.fillText("Quiet Please", 3460, 450);
+  g.fillStyle = "#e7c44a";
+  g.beginPath();
+  g.moveTo(3510, 500);
+  g.lineTo(3526, 528);
+  g.lineTo(3494, 528);
+  g.fill();
+  g.fillStyle = "#8fb8d6";
+  round(g, 3604, 500, 28, 22, 4);
+  g.fill();
+  g.fillStyle = "#c9843a";
+  g.fillRect(3488, 508, 16, 24);
+}
+
 function ensureBake() {
   if (baked) return baked;
   const mid = document.createElement("canvas");
@@ -392,29 +657,7 @@ function ensureBake() {
   g.fillText("The Neighborhood", 1300, 250);
   g.fillText("Woods", 2060, 250);
 
-  // Vet
-  g.fillStyle = "#f7fbfc";
-  round(g, 2520, 250, 900, 250, 12);
-  g.fill();
-  g.fillStyle = "#d5e4ea";
-  for (let y = 270; y < 480; y += 22) g.fillRect(2540, y, 860, 10);
-  g.fillStyle = "#7ec8c3";
-  round(g, 2580, 280, 220, 36, 8);
-  g.fill();
-  g.fillStyle = "#fff";
-  g.font = "800 16px 'Avenir Next', 'Segoe UI', sans-serif";
-  g.fillText("Vet  +", 2640, 304);
-  g.fillStyle = "#e7eef2";
-  g.fillRect(2860, 320, 80, 60);
-  g.fillRect(3080, 300, 50, 40);
-  g.fillStyle = "#c9d6e0";
-  round(g, 3200, 360, 70, 50, 6);
-  g.fill();
-  g.fillStyle = "#8fb8d6";
-  round(g, 3360, 430, 90, 50, 8);
-  g.fill();
-  g.fillStyle = "#5c4638";
-  g.fillText("Escape from the Vet", 2580, 230);
+  paintClinic(g);
 
   // Night home
   g.fillStyle = "rgba(255,255,255,0.08)";
@@ -467,6 +710,68 @@ function ensureBake() {
   }
   baked = mid;
   return baked;
+}
+
+function paintClinicLife(ctx, time) {
+  const tankX = 2824;
+  const tankW = 58;
+  for (let i = 0; i < 3; i++) {
+    const x = tankX + ((time * 22 + i * 18) % tankW);
+    ctx.fillStyle = i === 2 ? "#f2c14b" : "#1f6f9a";
+    ctx.beginPath();
+    ctx.ellipse(x, 396 + i * 8, 5, 2.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (Math.sin(time * 7) > 0.55) {
+    ctx.fillStyle = "rgba(255,255,255,0.28)";
+    ctx.fillRect(2860, 304, 160, 8);
+    ctx.fillRect(3300, 242, 90, 6);
+  }
+  const nurseX = 2690 + (time * 26) % 130;
+  ctx.fillStyle = "rgba(70, 110, 130, 0.5)";
+  ctx.fillRect(nurseX, 258, 18, 32);
+  ctx.beginPath();
+  ctx.arc(nurseX + 9, 250, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();
+  ctx.translate(2766, 268);
+  ctx.strokeStyle = "#5c4638";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(0, 0, 8, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, -5);
+  ctx.moveTo(0, 0);
+  ctx.lineTo(Math.sin(time) * 5, Math.cos(time) * 4);
+  ctx.stroke();
+  ctx.restore();
+  const pulse = (Math.sin(time * 6) + 1) / 2;
+  ctx.strokeStyle = `rgba(226, 59, 74, ${0.35 + pulse * 0.6})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < 48; i++) {
+    const x = 3464 + i * 1.4;
+    const y = 386 + (i % 8 === 4 ? -8 : i % 8 === 5 ? 4 : 0);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.fillStyle = "rgba(200, 210, 216, 0.55)";
+  ctx.beginPath();
+  ctx.arc(3370, 250 - (time * 14) % 28, 4, 0, Math.PI * 2);
+  ctx.arc(3382, 242 - (time * 12) % 24, 3, 0, Math.PI * 2);
+  ctx.fill();
+  if (Math.sin(time * 4) > 0) {
+    ctx.fillStyle = "#7ee0a8";
+    ctx.fillRect(3472, 382, 6, 4);
+  }
+  ctx.strokeStyle = "rgba(255, 244, 160, 0.55)";
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(2740, 270, 22 + Math.sin(time * 3) * 2, 0, Math.PI * 2);
+  ctx.stroke();
 }
 
 function drawNode(g, progress, id, time) {
@@ -556,6 +861,7 @@ export function drawMap(ctx, width, height, dpr, progress, cat, time) {
   ctx.save();
   ctx.translate(-Math.round(camX), -Math.round(camY));
   ctx.drawImage(art, 0, 0);
+  paintClinicLife(ctx, time);
   const sway = Math.sin(time * 1.4) * 3;
   ctx.fillStyle = "rgba(255,255,255,0.55)";
   ctx.beginPath();
