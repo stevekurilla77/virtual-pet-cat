@@ -22,7 +22,7 @@
       <div class="sheet glass">
         <p class="eyebrow">Sunbeam</p>
         <h1>Home is this way.</h1>
-        <p class="lede">A small cat, four rooms, and the person waiting at the end of each one. Double-tap Jump to pounce. Hop on a Roomba and hold Jump to fly.</p>
+        <p class="lede">Four worlds from the living room to the rainy way home. Pick a cat, follow the map, and shoo trouble with a poof of stars.</p>
         <div class="row actions">
           <button id="play" class="primary" type="button">Play</button>
           <button id="quiet" class="ghost" type="button">The quiet room</button>
@@ -66,7 +66,7 @@
             <div class="seg" id="wear" role="group" aria-label="Bond gifts"></div>
           </div>
           <div class="footer-row">
-            <button id="begin" class="primary" type="button">Find her</button>
+            <button id="begin" class="primary" type="button">To the map</button>
             <button id="back-title" class="ghost" type="button">Back</button>
           </div>
         </div>
@@ -99,6 +99,21 @@
         </div>
       </div>
     </section>
+    <section id="shop" class="screen" hidden>
+      <div class="sheet glass">
+        <p class="eyebrow">Treat shop</p>
+        <h1>Spend a few fish</h1>
+        <p id="shop-fish" class="lede">0 fish in the bank.</p>
+        <div class="row">
+          <button id="buy-collar" class="tiny" type="button">Collar, 8 fish</button>
+          <button id="buy-hat" class="tiny" type="button">Hat, 12 fish</button>
+          <button id="buy-heart" class="tiny" type="button">Extra heart, 6 fish</button>
+        </div>
+        <div class="row actions">
+          <button id="shop-close" class="primary" type="button">Back to the map</button>
+        </div>
+      </div>
+    </section>
     <section id="settings" class="screen" hidden>
       <div class="sheet glass">
         <p class="eyebrow">Settings</p>
@@ -111,6 +126,7 @@
           <button id="music-toggle" class="tiny" type="button">Music on</button>
           <button id="sfx-toggle" class="tiny" type="button">Effects on</button>
           <button id="unlock-all" class="tiny" type="button">Unlock all levels</button>
+          <button id="easy-toggle" class="tiny" type="button">Easier off</button>
         </div>
         <div class="row" id="level-jumps"></div>
         <div class="row actions">
@@ -157,11 +173,15 @@
         <button class="padbtn" id="down" type="button" aria-label="Down" disabled>▼</button>
       </div>
     </div>
-    <div class="cluster right">
+    <div class="cluster right" id="play-buttons">
       <button class="padbtn small" id="fish-btn" type="button" hidden>Fish</button>
       <button class="padbtn small" id="action" type="button" hidden>Act</button>
       <button class="padbtn" id="scratch" type="button" aria-label="Scratch">Claw</button>
       <button class="padbtn" id="jump" type="button" aria-label="Jump">Jump</button>
+    </div>
+    <div id="fish-controls" hidden>
+      <button class="padbtn fish-done" id="fish-done" type="button">Done</button>
+      <button class="padbtn fish-reel" id="reel" type="button">Reel</button>
     </div>
   </div>
   <p id="home-tip" hidden>Tip: Share, then Add to Home Screen, for a full screen. <button id="home-tip-close" type="button">OK</button></p>

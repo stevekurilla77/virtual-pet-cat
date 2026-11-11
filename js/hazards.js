@@ -26,7 +26,8 @@ export function dressLevel(level, index) {
     if (level.enemies.some((enemy) => Math.abs(enemy.x - x) < 120)) continue;
     spots.push({ x, floor });
   }
-  level.hazards = KITS[index].map((kind, i) => {
+  const kit = (level.kit && level.kit.length) ? level.kit : (KITS[index] || ["post", "spring", "box"]);
+  level.hazards = kit.map((kind, i) => {
     const spot = spots[i % Math.max(1, spots.length)] || { x: 900 + i * 640, floor: floors[0] };
     const x = spot.x + (i > spots.length ? 48 : 0);
     return {
@@ -43,7 +44,8 @@ export function dressLevel(level, index) {
   let bird = 0;
   for (const enemy of level.enemies) {
     if (enemy.kind === "bird") {
-      enemy.species = SPECIES[index][bird++] || SPECIES[index][0];
+      const flock = SPECIES[index] || ["crow", "pigeon", "sparrow"];
+      enemy.species = enemy.species || flock[bird++] || flock[0];
       enemy.perchX = enemy.x;
       enemy.perchY = enemy.y;
       enemy.home = enemy.y;
@@ -173,7 +175,7 @@ function addRoutes(level, index) {
     { x: base - 16, y: GROUND - 214, w: 176, kind: "perch" },
   ];
   for (const tier of tiers) level.solids.push({ ...tier, h: 16, ledge: true });
-  const names = ROUTE[index];
+  const names = ROUTE[index] || ROUTE[level.world] || ["fence", "post", "trunk"];
   level.climbs = [
     { x: base, top: GROUND - 76, bot: GROUND, kind: names[0], ledgeX: tiers[0].x + 20, ledgeY: tiers[0].y - 58 },
     { x: base + 54, top: GROUND - 148, bot: GROUND - 60, kind: names[1], ledgeX: tiers[1].x + 16, ledgeY: tiers[1].y - 58 },
@@ -448,6 +450,29 @@ export function updateHazards(state, dt, audio, input = {}) {
     if (hazard.kind === "tramp" && near && player.vy >= 0) bounce = -820;
     if (hazard.kind === "balloon" && near) bounce = -460;
     if (hazard.kind === "spring" && near && player.vy < 0) bounce = -640;
+    if (hazard.kind === "can" && near && player.vy > 60) {
+      bounce = -700;
+      audio.lid();
+    }
+    if (hazard.kind === "pretzel" && near && player.vy > 40) {
+      bounce = -560;
+      audio.crunch();
+    }
+    if (hazard.kind === "umbrella" && near && player.vy > 20) bounce = -480;
+    if ((hazard.kind === "hose" || hazard.kind === "sprinkler") && near && player.onGround) player.boost = Math.max(player.boost || 0, 0.35);
+    if (hazard.kind === "ice" && near && player.onGround) slip = 0.4;
+    if (hazard.kind === "sensor" && near && !hazard.seen) {
+      hazard.seen = true;
+      state.banner = "A light clicks on. Slip past.";
+      state.bannerT = 1.2;
+      audio.buzz();
+    }
+    if (hazard.kind === "vent" && near && !hazard.seen) {
+      hazard.seen = true;
+      state.banner = "A vent. Through you go.";
+      state.bannerT = 1;
+      audio.clang();
+    }
     if (hazard.kind === "sprinkler" && sprinklerOn(hazard) && near && player.y + 58 > GROUND - 36) poke(state, audio);
     if (hazard.kind === "spark" && sparkOn(hazard) && near && player.y + 58 > GROUND - 28) poke(state, audio);
     if (hazard.kind === "grill" && grillOn(hazard) && near) poke(state, audio);
@@ -1113,6 +1138,51 @@ function drawOne(g, hazard, time) {
     g.fillRect(-14, -28, 28, 28);
     g.strokeStyle = "#8d6a45";
     g.strokeRect(-14, -28, 28, 28);
+  } else if (hazard.kind === "can") {
+    g.fillStyle = "#6f8f72";
+    g.fillRect(-16, -36, 32, 36);
+    g.fillStyle = "#dfe8df";
+    g.fillRect(-18, -40, 36, 8);
+  } else if (hazard.kind === "pretzel") {
+    g.strokeStyle = "#c9843a";
+    g.lineWidth = 6;
+    g.beginPath();
+    g.arc(-8, -16, 10, 0, Math.PI * 2);
+    g.stroke();
+    g.beginPath();
+    g.arc(8, -16, 10, 0, Math.PI * 2);
+    g.stroke();
+  } else if (hazard.kind === "umbrella") {
+    g.fillStyle = "#e07a8c";
+    g.beginPath();
+    g.arc(0, -28, 22, Math.PI, 0);
+    g.fill();
+    g.strokeStyle = "#5c4638";
+    g.beginPath();
+    g.moveTo(0, -28);
+    g.lineTo(0, -4);
+    g.stroke();
+  } else if (hazard.kind === "cart" || hazard.kind === "toy") {
+    g.fillStyle = "#8fb8d6";
+    g.fillRect(-20, -22, 40, 16);
+    g.fillStyle = "#3a2a22";
+    g.beginPath();
+    g.arc(-12, -4, 5, 0, Math.PI * 2);
+    g.arc(12, -4, 5, 0, Math.PI * 2);
+    g.fill();
+  } else if (hazard.kind === "vent") {
+    g.fillStyle = "#9aa7b2";
+    g.fillRect(-18, -28, 36, 22);
+    g.strokeStyle = "#5c6b78";
+    g.strokeRect(-18, -28, 36, 22);
+  } else if (hazard.kind === "sensor") {
+    g.fillStyle = hazard.seen ? "#f2c14b" : "#c9d6e0";
+    g.beginPath();
+    g.arc(0, -40, 8, 0, Math.PI * 2);
+    g.fill();
+  } else if (hazard.kind === "ice") {
+    g.fillStyle = "rgba(186, 224, 244, 0.65)";
+    g.fillRect(-40, -6, 80, 8);
   }
   g.restore();
 }

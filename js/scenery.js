@@ -55,6 +55,17 @@ function paintFar(g, theme) {
     sky.addColorStop(0, "#5ec8f2");
     sky.addColorStop(0.45, "#b7e98a");
     sky.addColorStop(1, "#e7f6b8");
+  } else if (theme === "street") {
+    sky.addColorStop(0, "#49b7ee");
+    sky.addColorStop(0.6, "#b7e98a");
+    sky.addColorStop(1, "#fff0c4");
+  } else if (theme === "vet") {
+    sky.addColorStop(0, "#d5e4f0");
+    sky.addColorStop(1, "#f4efe8");
+  } else if (theme === "night") {
+    sky.addColorStop(0, "#241c38");
+    sky.addColorStop(0.55, "#6a4a68");
+    sky.addColorStop(1, "#1d2430");
   } else {
     sky.addColorStop(0, "#5d458c");
     sky.addColorStop(0.42, "#e07a4a");
@@ -112,6 +123,21 @@ function paintMid(g, theme) {
     for (let x = 0; x < 720; x += 28) g.fillRect(x, 300, 14, 220);
     g.fillStyle = soften("#5ea84c");
     g.fillRect(0, 292, 720, 10);
+  } else if (theme === "street") {
+    g.fillStyle = soften("#8ed56a");
+    g.fillRect(0, 280, 720, 240);
+    g.fillStyle = "rgba(255,255,255,0.2)";
+    for (let x = 0; x < 720; x += 36) g.fillRect(x, 300, 8, 180);
+  } else if (theme === "vet") {
+    g.fillStyle = soften("#d5e0e8");
+    g.fillRect(0, 80, 720, 400);
+    g.fillStyle = "rgba(120, 150, 170, 0.25)";
+    for (let x = 40; x < 720; x += 120) g.fillRect(x, 100, 70, 90);
+  } else if (theme === "night") {
+    g.fillStyle = "#2c3340";
+    g.fillRect(0, 200, 720, 320);
+    g.fillStyle = "rgba(255, 214, 140, 0.15)";
+    for (let x = 30; x < 720; x += 90) g.fillRect(x, 230, 16, 40);
   } else {
     g.fillStyle = soften("#c46a62");
     g.fillRect(0, 150, 720, 320);
@@ -132,6 +158,9 @@ function paintNear(g, level, anchors) {
     if (level.theme === "living") livingStamp(g, x, anchors);
     else if (level.theme === "porch") porchStamp(g, x, anchors);
     else if (level.theme === "yard") yardStamp(g, x, anchors);
+    else if (level.theme === "street") streetStamp(g, x);
+    else if (level.theme === "vet") vetStamp(g, x);
+    else if (level.theme === "night") nightStamp(g, x);
     else neighborStamp(g, x, anchors);
   }
   finale(g, level, anchors);
@@ -195,6 +224,34 @@ function yardStamp(g, x, anchors) {
   hose(g, x + 800);
   can(g, x + 860);
   shed(g, x + 880);
+}
+
+function streetStamp(g, x) {
+  fenceRun(g, x, 280);
+  pot(g, x + 40, "#8ed56a");
+  mailbox(g, x + 160);
+  oak(g, x + 360, { swings: [], plants: [], windows: [], fires: [] });
+  shed(g, x + 640);
+}
+
+function vetStamp(g, x) {
+  door(g, x + 40);
+  bookcase(g, x + 200);
+  chairish(g, x + 420);
+  door(g, x + 620);
+}
+
+function chairish(g, x) {
+  g.fillStyle = soften("#8fb8d6");
+  g.fillRect(x, GROUND - 48, 54, 36);
+  g.fillRect(x + 8, GROUND - 70, 38, 24);
+}
+
+function nightStamp(g, x) {
+  fenceRun(g, x, 240);
+  lamp(g, x + 180);
+  oak(g, x + 400, { swings: [], plants: [], windows: [], fires: [] });
+  shed(g, x + 680);
 }
 
 function neighborStamp(g, x, anchors) {

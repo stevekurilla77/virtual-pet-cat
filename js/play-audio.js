@@ -1,3 +1,5 @@
+import { TUNES } from "./campaign.js";
+
 const MUSIC = new Set([
   "music-inside", "music-outside", "music-living", "music-porch",
   "music-yard", "music-neighbor", "music-sting", "music-fanfare", "music-hurt",
@@ -199,6 +201,7 @@ export class PlayAudio {
 
   startLoop(slot, name) {
     this.stopSlot(slot);
+    if (!this.buffers[name] && TUNES[name] && this.ctx) this.buffers[name] = renderTune(this.ctx, TUNES[name]);
     const buffer = this.buffers[name];
     if (!buffer) return;
     const src = this.ctx.createBufferSource();
@@ -343,6 +346,13 @@ export class PlayAudio {
     });
   }
 
+  lid() { this.blip(140, 0.12, 0.12); }
+  crunch() { this.blip(280, 0.05, 0.08); }
+  chitter() { this.blip(740, 0.05, 0.07); }
+  bark() { this.blip(150, 0.16, 0.13); }
+  buzz() { this.blip(880, 0.12, 0.05); }
+  clang() { this.blip(220, 0.14, 0.1); }
+  thunder() { this.blip(70, 0.35, 0.16); }
   squeak() { this.blip(920, 0.07, 0.1); }
   chatter() { this.blip(460, 0.08, 0.09); }
   splash() { this.blip(220, 0.11, 0.09); }
@@ -496,6 +506,22 @@ export class PlayAudio {
     this.applyMusic(0.3);
     if (this.ready && this.current && !this.loops[this.slot]) this.playMusic(this.current, true);
   }
+}
+
+function renderTune(ctx, tune) {
+  const seconds = 8;
+  const rate = ctx.sampleRate;
+  const buffer = ctx.createBuffer(1, Math.floor(rate * seconds), rate);
+  const data = buffer.getChannelData(0);
+  const beat = rate * 60 / tune.tempo / 2;
+  for (let i = 0; i < data.length; i++) {
+    const step = Math.floor(i / beat) % tune.notes.length;
+    const freq = tune.notes[step];
+    const local = (i % beat) / rate;
+    const env = Math.exp(-local * 3.2);
+    data[i] = Math.sin((i / rate) * freq * Math.PI * 2) * 0.2 * env;
+  }
+  return buffer;
 }
 
 function tinyWav() {

@@ -12,7 +12,7 @@ html, body {
   margin: 0;
   height: 100%;
   height: 100dvh;
-  background: #1c1916;
+  background: #f6efe6;
   overflow: hidden;
   touch-action: none;
   overscroll-behavior: none;
@@ -109,7 +109,8 @@ button { cursor: pointer; border: 0; background: transparent; }
   pointer-events: auto;
 }
 
-.screen[hidden], #hud[hidden], #pad[hidden], #banner[hidden], #home-tip[hidden], #speech[hidden] { display: none !important; }
+.screen[hidden], #hud[hidden], #pad[hidden], #banner[hidden], #home-tip[hidden], #speech[hidden],
+#dpad[hidden], #play-buttons[hidden], #fish-controls[hidden] { display: none !important; }
 #speech {
   position: absolute;
   z-index: 7;
@@ -369,7 +370,7 @@ input[type="range"] { height: 28px; padding: 0; }
   top: 0;
   z-index: 4;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
   align-items: center;
   gap: 8px;
@@ -379,11 +380,14 @@ input[type="range"] { height: 28px; padding: 0; }
 #level-name { margin-right: auto; }
 
 #progress {
-  flex: 1 0 100%;
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: calc(46px + env(safe-area-inset-top));
   height: 6px;
-  margin-top: 6px;
+  margin: 0;
   border-radius: 999px;
-  background: rgba(255, 250, 244, 0.45);
+  background: rgba(255, 250, 244, 0.55);
   overflow: hidden;
 }
 #progress-fill {
@@ -513,3 +517,30 @@ input[type="range"] { height: 28px; padding: 0; }
 }
 
 #fish-btn[hidden] { display: none !important; }
+#fish-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.fish-done, .fish-reel { pointer-events: auto; position: absolute; }
+.fish-done {
+  left: calc(16px + env(safe-area-inset-left));
+  top: calc(62px + env(safe-area-inset-top));
+  width: 96px;
+  height: 52px;
+  font-size: 18px;
+}
+.fish-reel {
+  right: calc(16px + env(safe-area-inset-right));
+  top: 50%;
+  transform: translateY(-50%);
+  width: 112px;
+  height: 112px;
+  font-size: 22px;
+  background: rgba(255, 236, 214, 0.92);
+}
+@media (max-height: 420px) {
+  .fish-reel { width: 92px; height: 92px; font-size: 18px; }
+  .fish-done { width: 84px; height: 52px; font-size: 16px; }
+  #goal-tracker { width: 120px; height: 28px; }
+}

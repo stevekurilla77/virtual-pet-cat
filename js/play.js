@@ -4,6 +4,8 @@ import { COAT_ORDER, COATS, EYE_ORDER, EYES, cleanName, swatchBackground } from 
 import { PlayAudio } from "./play-audio.js";
 import { bakeScene, drawLady, drawMotion } from "./scenery.js";
 import { applyClimb, dressLevel, drawBird, drawCans, drawClimbs, drawHazards, nearClimb, nearest, updateCans, updateHazards, birdSheet } from "./hazards.js";
+import { EXTRA_LEVELS, WORLDS, worldClues } from "./campaign.js";
+import { cleared, drawMap, ensureMap, enterCurrent, hitWorld, stepMap } from "./map.js";
 
 const KEY = "sunbeam-play";
 const GROUND = 470;
@@ -15,7 +17,7 @@ const MAXRUN = 255;
 
 const audio = new PlayAudio();
 const held = { left: false, right: false, up: false, down: false, jump: false, scratch: false, fish: false, action: false };
-const pressed = { jump: false, scratch: false, fish: false, action: false };
+const pressed = { jump: false, scratch: false, fish: false, action: false, reel: false, done: false };
 
 const view = document.querySelector("#view");
 const ctx = view.getContext("2d");
@@ -112,14 +114,15 @@ function floorAt(solids, x) {
 }
 
 function placeFoe(world, kind, frac, width, extra = {}) {
+  const flying = kind === "bird" || kind === "crow" || kind === "pigeon" || kind === "parrot";
   let spot = 180 + frac * (width - 360);
   for (let hop = 0; hop < 14; hop++) {
     const nearBed = world.checkpoints.some((mark) => Math.abs(mark.x - spot) < 170);
     const floor = floorAt(world.solids, spot);
-    const bodyY = kind === "bird" ? 214 : kind === "fish" ? GROUND - 6 : GROUND - 24;
+    const bodyY = flying ? 214 : kind === "fish" ? GROUND - 6 : GROUND - 24;
     const blocked = world.solids.some((block) => block.kind !== "floor" && block.kind !== "pond" && spot > block.x + 8 && spot < block.x + block.w - 8 && bodyY > block.y && bodyY < block.y + block.h);
     if (floor && !nearBed && !blocked) {
-      const y = kind === "bird" ? 214 : kind === "fish" ? GROUND - 6 : kind === "chicken" || kind === "rooster" ? GROUND - 30 : GROUND - 20;
+      const y = flying ? 214 : kind === "fish" ? GROUND - 6 : kind === "chicken" || kind === "rooster" || kind === "bulldog" || kind === "nurse" ? GROUND - 30 : GROUND - 20;
       world.enemies = world.enemies || [];
       world.enemies.push({
         kind,
@@ -129,7 +132,9 @@ function placeFoe(world, kind, frac, width, extra = {}) {
         max: floor.x + floor.w - 70,
         hp: extra.hp || 1,
         big: Boolean(extra.big),
+        boss: Boolean(extra.boss),
         home: y,
+        species: extra.species || (kind === "crow" ? "crow" : kind === "pigeon" ? "pigeon" : kind === "parrot" ? "cardinal" : kind === "bird" ? "jay" : null),
       });
       return;
     }
@@ -146,8 +151,8 @@ function placeSquirrel(world, frac, width) {
     kind: "squirrel",
     x: plat.x,
     y: plat.y - 16,
-    min: plat.x - Math.min(36, plat.w / 2 - 8),
-    max: plat.x + Math.min(36, plat.w / 2 - 8),
+    min: plat.x - Math.max(18, Math.min(48, plat.w / 2 - 12)),
+    max: plat.x + Math.max(18, Math.min(48, plat.w / 2 - 12)),
     hp: 1,
     home: plat.y - 16,
   });
@@ -207,7 +212,7 @@ function lay(spec) {
   const owner = { x: width - 130, y: GROUND - 86 };
   spec.cast(world, width);
   for (const enemy of world.enemies) {
-    if (enemy.kind === "bird" || enemy.kind === "fish") continue;
+    if (enemy.kind === "bird" || enemy.kind === "fish" || enemy.kind === "crow" || enemy.kind === "pigeon" || enemy.kind === "parrot") continue;
     for (let hop = 0; hop < 8; hop++) {
       const buried = world.solids.some((block) => block.kind !== "floor" && block.kind !== "pond" && enemy.x > block.x + 2 && enemy.x < block.x + block.w - 2 && enemy.y > block.y + 2 && enemy.y < block.y + block.h - 2);
       if (!buried) break;
@@ -225,10 +230,14 @@ function lay(spec) {
     checkpoint: world.checkpoints[0] ? world.checkpoints[0].x : 500,
     checkpoints: world.checkpoints,
     water: world.water,
-    rod: spec.rod ? spec.rod(world, width) : null,
+    rod: typeof spec.rod === "function" ? spec.rod(world, width) : spec.rod ? { x: Math.min(owner.x - 180, 420), y: GROUND - 36 } : null,
     solids: world.solids,
     enemies: world.enemies,
     placed: stockFish(world, spec.fish, owner.x),
+    goal: spec.goal || "clue",
+    world: spec.world || 0,
+    kit: spec.kit || null,
+    cluePlan: spec.clue || null,
   });
 }
 
@@ -239,6 +248,8 @@ const LEVELS = [
     music: "music-living",
     theme: "living",
     fish: 44,
+    goal: "clue",
+    world: 0,
     beats: [
       (w) => { const s = w.floor(820); w.decor(s, 180, 64, 220, "couch"); w.decor(s, 520, 42, 160, "table"); },
       (w) => w.gap(100),
@@ -273,6 +284,8 @@ const LEVELS = [
     music: "music-porch",
     theme: "porch",
     fish: 50,
+    goal: "clue",
+    world: 0,
     beats: [
       (w) => { const s = w.floor(760); w.decor(s, 160, 70, 130, "planter"); },
       (w) => w.gap(104),
@@ -309,6 +322,8 @@ const LEVELS = [
     music: "music-yard",
     theme: "yard",
     fish: 54,
+    goal: "clue",
+    world: 0,
     rod: (w) => ({ x: Math.min(w.x - 400, 2100), y: GROUND - 36 }),
     beats: [
       (w) => w.floor(840),
@@ -347,6 +362,8 @@ const LEVELS = [
     music: "music-neighbor",
     theme: "neighbor",
     fish: 58,
+    goal: "reunion",
+    world: 0,
     beats: [
       (w) => { const s = w.floor(780); w.decor(s, 200, 70, 180, "counter"); },
       (w) => w.gap(108),
@@ -381,6 +398,34 @@ const LEVELS = [
   }),
 ];
 
+function coursePlan(plan) {
+  return plan.map((step) => (w) => {
+    if (step[0] === "floor") w.floor(step[1]);
+    else if (step[0] === "gap") w.gap(step[1]);
+    else if (step[0] === "bed") w.bed();
+    else if (step[0] === "pond") w.pond(step[1]);
+    else if (step[0] === "stairs") w.stairs(step[1], step[2], step[3] || "step");
+    else if (step[0] === "set") {
+      const span = w.floor(step[1]);
+      for (let i = 2; i < step.length; i++) {
+        const decor = step[i];
+        w.decor(span, decor[0], decor[1], decor[2], decor[3]);
+      }
+    }
+  });
+}
+
+for (const spec of EXTRA_LEVELS) {
+  LEVELS.push(lay({
+    ...spec,
+    beats: coursePlan(spec.plan),
+    cast(w) {
+      (spec.mice || []).forEach((frac) => placeFoe(w, "mouse", frac, w.x));
+      (spec.foes || []).forEach((item) => placeFoe(w, item[0], item[1], w.x, item[2] || {}));
+    },
+  }));
+}
+
 const CLUES = [
   { id: "glasses", label: "Glasses", next: "the front porch", open: "Level 1: the living room. Where did she go?", say: "Oh look, her reading glasses! She must have come this way..." },
   { id: "slippers", label: "Slippers", next: "the yard", open: "Level 2: the front porch. Where did she go?", say: "Her slippers! She can't have gone far..." },
@@ -388,10 +433,15 @@ const CLUES = [
   { id: "keys", label: "Keys", next: "tea with the neighbor", open: "Level 4: the neighbor's house. Where did she go?", say: "Her handbag and keys! She must be having tea just ahead..." },
 ];
 const REUNION_LINE = "There you are. I only sat down for tea with the neighbor.";
+const VET_LINE = "The vet is waiting this afternoon. And I heard a little friend of yours is missing, out in the neighborhood.";
+const RESCUE_LINE = "You found them. The friend is safe. Now the vet is calling.";
+const ESCAPE_LINE = "Out the front doors. She is there, and the rain has started. Home is across the city.";
+const FINALE_LINE = "Home. The flap was open, the friend is on the rug, and the rain can stay outside.";
 
 LEVELS.forEach(dressLevel);
 LEVELS.forEach((level, index) => {
-  const spec = CLUES[index];
+  const spec = level.cluePlan || CLUES[index];
+  if (!spec) return;
   level.clue = {
     id: spec.id,
     label: spec.label,
@@ -400,11 +450,11 @@ LEVELS.forEach((level, index) => {
     next: spec.next,
     open: spec.open,
     say: spec.say,
-    x: level.owner.x - (index === 3 ? 200 : 110),
+    x: level.owner.x - (level.goal === "reunion" || level.goal === "finale" ? 200 : 110),
     y: GROUND - 36,
     got: false,
   };
-  level.ownerHere = index === LEVELS.length - 1;
+  level.ownerHere = level.goal === "reunion" || level.goal === "finale";
 });
 LEVELS.forEach((level, index) => {
   level.audit = auditReach(level, index);
@@ -435,6 +485,15 @@ function loadProgress() {
       bestFish: raw.bestFish || {},
       owned: raw.owned || {},
       clues: raw.clues || {},
+      map: raw.map || { world: 0, node: "living" },
+      cleared: raw.cleared || {},
+      easy: Boolean(raw.easy),
+      extraHeart: Boolean(raw.extraHeart),
+      foundOwner: Boolean(raw.foundOwner),
+      friend: Boolean(raw.friend),
+      escaped: Boolean(raw.escaped),
+      home: Boolean(raw.home),
+      plus: Boolean(raw.plus),
     };
   } catch (error) {
     return {
@@ -448,6 +507,15 @@ function loadProgress() {
       bestFish: {},
       owned: {},
       clues: {},
+      map: { world: 0, node: "living" },
+      cleared: {},
+      easy: false,
+      extraHeart: false,
+      foundOwner: false,
+      friend: false,
+      escaped: false,
+      home: false,
+      plus: false,
     };
   }
 }
@@ -542,7 +610,7 @@ function fresh(progress, levelIndex) {
       hurt: 0,
       invuln: 0,
       land: 0,
-      health: 3,
+      health: progress.easy || progress.extraHeart ? 4 : 3,
       pose: "stand",
     },
     cat: makeCat(progress.cat),
@@ -983,11 +1051,123 @@ function steerBird(state, enemy, dt) {
   }
 }
 
+function beginPatrol(enemy, dt) {
+  enemy.dir = enemy.dir === -1 ? -1 : 1;
+  enemy.turnCd = Math.max(0, (enemy.turnCd || 0) - dt);
+}
+
+function tryTurn(enemy) {
+  if ((enemy.turnCd || 0) > 0) return false;
+  enemy.dir = enemy.dir === -1 ? 1 : -1;
+  enemy.turnCd = 0.55;
+  return true;
+}
+
+function patrolSpan(enemy) {
+  let min = Number(enemy.min);
+  let max = Number(enemy.max);
+  if (!Number.isFinite(min)) min = enemy.x - 48;
+  if (!Number.isFinite(max)) max = enemy.x + 48;
+  if (max < min) {
+    const swap = min;
+    min = max;
+    max = swap;
+  }
+  enemy.min = min;
+  enemy.max = max;
+  return { min, max, span: max - min };
+}
+
+function walled(state, enemy, dir) {
+  const x = enemy.x + dir * 18;
+  const y = enemy.y - 6;
+  return state.level.solids.some((block) => {
+    if (!block || block.kind === "floor" || block.kind === "pond") return false;
+    const h = block.h || 18;
+    if (h < 22 && y <= block.y) return false;
+    return x > block.x + 8 && x < block.x + block.w - 8 && y > block.y + 10 && y < block.y + h - 4;
+  });
+}
+
+function patrolMove(state, enemy, dt, speed) {
+  const { min, max, span } = patrolSpan(enemy);
+  if (span < 22) {
+    enemy.x = (min + max) / 2;
+    return false;
+  }
+  const ahead = walled(state, enemy, enemy.dir);
+  const behind = walled(state, enemy, -enemy.dir);
+  if (ahead && behind) return false;
+  const pace = span < 90 ? Math.min(speed, 42) : speed;
+  const next = enemy.x + enemy.dir * pace * dt;
+  const edge = ahead || next < min || next > max;
+  if (!edge) {
+    enemy.x = next;
+    return false;
+  }
+  if (!tryTurn(enemy)) {
+    enemy.x = Math.max(min, Math.min(max, enemy.x));
+    return false;
+  }
+  enemy.x = Math.max(min + 2, Math.min(max - 2, enemy.x + enemy.dir * 14));
+  return true;
+}
+
 function cue(enemy, dt, fn) {
   enemy.voice = (enemy.voice || 0) - dt;
   if (enemy.voice > 0) return;
   enemy.voice = 2.4;
   fn();
+}
+
+const CRITTERS = {
+  raccoon: "#8d8078",
+  dog: "#c9843a",
+  bulldog: "#d7a15a",
+  possum: "#c9b8b0",
+  toy: "#d23d55",
+  tech: "#7ec8c3",
+  nurse: "#f2f6f8",
+  alley: "#4a403c",
+};
+
+function actCritter(state, enemy, dt, player) {
+  enemy.dead = Math.max(0, (enemy.dead || 0) - dt);
+  enemy.cool = Math.max(0, (enemy.cool || 0) - dt);
+  const ahead = player.x > enemy.x - 20 && player.x < enemy.x + 280;
+  const close = Math.abs(player.x - enemy.x) < 90;
+  if (enemy.kind === "possum" && enemy.dead > 0) {
+    enemy.y = (enemy.home || enemy.y) + 6;
+    return;
+  }
+  const speed = enemy.kind === "toy" ? 110 : enemy.kind === "possum" ? 26 : enemy.phase === "chase" ? 88 : 46;
+  patrolMove(state, enemy, dt, speed);
+  enemy.y = (enemy.home || enemy.y) + Math.abs(Math.sin(enemy.t * 10)) * -4;
+  if (enemy.kind === "raccoon" && ahead && enemy.cool <= 0) {
+    enemy.cool = 2.4;
+    audio.chitter();
+    state.shots.push({ x: enemy.x, y: enemy.y - 8, vx: 140, vy: -160, life: 1.4, kind: "acorn" });
+  } else if ((enemy.kind === "dog" || enemy.kind === "bulldog") && ahead && enemy.cool <= 0) {
+    enemy.cool = 2.2;
+    audio.bark();
+    state.shots.push({ x: enemy.x + 10, y: GROUND - 16, vx: 160, vy: 0, life: 0.8, kind: "wave" });
+  } else if (enemy.kind === "possum" && close) {
+    enemy.dead = 1.3;
+  } else if ((enemy.kind === "tech" || enemy.kind === "nurse") && ahead && enemy.phase !== "chase") {
+    enemy.phase = "chase";
+    enemy.chase = 2;
+    state.banner = "Spotted! Slip past the carrier.";
+    state.bannerT = 1.2;
+    audio.buzz();
+  }
+  if (enemy.phase === "chase") {
+    enemy.chase -= dt;
+    if (enemy.chase <= 0) enemy.phase = "strut";
+    if (enemy.cool <= 0 && enemy.kind === "nurse") {
+      enemy.cool = 1.8;
+      state.shots.push({ x: enemy.x, y: enemy.y - 10, vx: 120, vy: -40, life: 1.2, kind: "wave" });
+    }
+  }
 }
 
 function updateEnemies(state, dt) {
@@ -1018,38 +1198,44 @@ function updateEnemies(state, dt) {
       enemy.x += (enemy.vx || 0) * dt;
       enemy.vx *= 0.9;
     } else if (enemy.kind === "mouse") {
-      enemy.dir = enemy.dir || 1;
+      beginPatrol(enemy, dt);
       if (enemy.hole && !enemy.popped) {
         enemy.y = home + 16;
         if (player.x < enemy.x + 30 && Math.abs(player.x - enemy.x) < 190) {
           enemy.popped = true;
           enemy.dir = -1;
+          enemy.turnCd = 0.45;
           audio.squeak();
         }
       } else if (enemy.chaser) {
-        const goal = player.x - 120;
-        enemy.x += Math.sign(goal - enemy.x || 1) * 128 * dt;
-        enemy.x = Math.max(enemy.min, Math.min(enemy.max, enemy.x));
+        const { min, max } = patrolSpan(enemy);
+        const goal = Math.max(min, Math.min(max, player.x + 160));
+        const next = Math.sign(goal - enemy.x || enemy.dir);
+        if (Math.abs(goal - enemy.x) > 10 && next !== enemy.dir) tryTurn(enemy);
+        if ((enemy.turnCd || 0) < 0.4) enemy.x = Math.max(min, Math.min(max, enemy.x + enemy.dir * 110 * dt));
         enemy.y = home + Math.abs(Math.sin(enemy.t * 16)) * -6;
       } else {
-        const dart = enemy.group ? 150 : 118;
-        enemy.x += enemy.dir * dart * dt;
-        const zig = Math.sin(enemy.t * 3.2) > 0;
-        if (zig !== enemy.zig) {
+        const zig = Math.sin(enemy.t * 2.1) > 0;
+        if (enemy.zig == null) enemy.zig = zig;
+        else if (zig !== enemy.zig) {
           enemy.zig = zig;
-          enemy.dir *= -1;
+          tryTurn(enemy);
         }
-        if (enemy.x < enemy.min || enemy.x > enemy.max) enemy.dir *= -1;
+        patrolMove(state, enemy, dt, enemy.group ? 120 : 100);
         enemy.y = home + Math.abs(Math.sin(enemy.t * 16)) * -7;
         if (Math.abs(player.x - enemy.x) < 180) cue(enemy, dt, () => audio.squeak());
       }
       if (enemy.hole && !enemy.popped) continue;
-    } else if (enemy.kind === "bird") {
+    } else if (enemy.kind === "bird" || enemy.kind === "crow" || enemy.kind === "pigeon" || enemy.kind === "parrot") {
       steerBird(state, enemy, dt);
+      enemy.cool = Math.max(0, (enemy.cool || 0) - dt);
+      if (enemy.kind === "crow" && Math.abs(player.x - enemy.x) < 70 && enemy.cool <= 0) {
+        enemy.cool = 4;
+        audio.chatter();
+      }
     } else if (enemy.kind === "squirrel") {
-      enemy.dir = enemy.dir || 1;
-      enemy.x += enemy.dir * 70 * dt;
-      if (enemy.x < enemy.min || enemy.x > enemy.max) enemy.dir *= -1;
+      beginPatrol(enemy, dt);
+      patrolMove(state, enemy, dt, 62);
       enemy.cool = (enemy.cool == null ? 1.4 : enemy.cool) - dt;
       enemy.wind = Math.max(0, (enemy.wind || 0) - dt);
       const facing = player.x > enemy.x - 20 && player.x < enemy.x + 360;
@@ -1082,12 +1268,11 @@ function updateEnemies(state, dt) {
     } else if (enemy.kind === "chicken" || enemy.kind === "rooster") {
       const reach = enemy.kind === "rooster" ? 230 : 150;
       const close = Math.abs(player.x - enemy.x) < reach;
-      enemy.dir = enemy.dir || 1;
+      beginPatrol(enemy, dt);
       enemy.phase = enemy.phase || "strut";
       if (!close && enemy.phase !== "charge") enemy.phase = "strut";
       if (enemy.phase === "strut") {
-        enemy.x += enemy.dir * (enemy.kind === "rooster" ? 34 : 40) * dt;
-        if (enemy.x < enemy.min || enemy.x > enemy.max) enemy.dir *= -1;
+        patrolMove(state, enemy, dt, enemy.kind === "rooster" ? 32 : 38);
         if (close) {
           const boss = enemy.kind === "rooster";
           const hp = enemy.hp || 1;
@@ -1108,9 +1293,9 @@ function updateEnemies(state, dt) {
       } else {
         const fed = player.food > 0 && enemy.kind === "rooster";
         const speed = (enemy.kind === "rooster" ? 145 : 108) * (fed ? 0.6 : 1);
-        enemy.x += enemy.dir * speed * dt;
+        const turned = patrolMove(state, enemy, dt, speed);
         enemy.charge -= dt;
-        if (enemy.charge <= 0) {
+        if (enemy.charge <= 0 || turned) {
           enemy.phase = "strut";
           if (enemy.kind === "chicken" && !enemy.egged) {
             enemy.egged = true;
@@ -1127,6 +1312,9 @@ function updateEnemies(state, dt) {
       }
       enemy.x = Math.max(enemy.min, Math.min(enemy.max, enemy.x));
       enemy.y = home + Math.abs(Math.sin(enemy.t * 14)) * -6;
+    } else if (CRITTERS[enemy.kind]) {
+      beginPatrol(enemy, dt);
+      actCritter(state, enemy, dt, player);
     }
     nearest = Math.min(nearest, Math.abs(enemy.x - player.x));
     const scale = enemy.kind === "bird" ? 1.25 : enemy.big ? 1.45 : 1.2;
@@ -1158,7 +1346,7 @@ function updateEnemies(state, dt) {
       continue;
     }
     if (enemy.stun > 0) continue;
-    if (!(state.spawnGrace > 0) && player.invuln <= 0 && rectsOverlap(body(player), box)) hurt(state, enemy.x < player.x ? 180 : -180);
+    if (!(enemy.dead > 0) && !(state.spawnGrace > 0) && player.invuln <= 0 && rectsOverlap(body(player), box)) hurt(state, enemy.x < player.x ? 180 : -180);
     if (enemy.kind === "bird" && (enemy.dive === "warn" || enemy.dive === "go") && enemy.x < player.x) {
       enemy.dive = null;
       enemy.diveT = 0;
@@ -1256,15 +1444,22 @@ function tryFish(state) {
   }
   state.fishing = { t: 0, bite: 0.8 + Math.random() * 0.9, caught: false, spot };
   audio.sting("music-sting");
-  state.banner = "Wait for the tug, then tap Jump.";
+  state.banner = "Wait for the tug, then tap Reel.";
   state.bannerT = 1.2;
 }
 
 function updateFishing(state, dt, input) {
   const fish = state.fishing;
   if (!fish) return;
+  if (input.donePressed) {
+    state.fishing = null;
+    state.banner = "The line is in.";
+    state.bannerT = 0.8;
+    return;
+  }
   fish.t += dt;
-  if (!fish.caught && input.jumpPressed && fish.t > fish.bite && fish.t < fish.bite + 0.42) {
+  const reel = !!(input.jumpPressed || input.reelPressed || input.fishPressed);
+  if (!fish.caught && reel && fish.t > fish.bite && fish.t < fish.bite + 0.42) {
     fish.caught = true;
     const prize = { x: state.player.x + 20, y: state.player.y - 10, golden: Math.random() < 0.25, phase: 0, got: false, bonus: true };
     collectFish(state, prize);
@@ -1299,18 +1494,39 @@ function finish(state) {
   state.progress.bestFish[state.level.id] = Math.max(state.progress.bestFish[state.level.id] || 0, state.fishGot);
   state.progress.unlocked = Math.max(state.progress.unlocked, state.levelIndex + 2);
   if (state.level.rod) state.progress.rod = true;
+  state.progress.cleared = state.progress.cleared || {};
+  state.progress.cleared[state.level.id] = true;
+  if (state.level.goal === "reunion") state.progress.foundOwner = true;
+  if (state.level.goal === "rescue") state.progress.friend = true;
+  if (state.level.goal === "escape") state.progress.escaped = true;
+  if (state.level.goal === "finale") state.progress.home = true;
   saveProgress(state.progress);
-  const finale = state.levelIndex >= LEVELS.length - 1;
-  audio.setPurr(finale);
+  const finale = state.level.goal === "finale";
+  const reunion = state.level.goal === "reunion";
+  audio.setPurr(finale || reunion);
   if (finale) {
     audio.sting("music-fanfare");
     audio.playMusic("music-inside");
     audio.meow("greet");
-    state.speech = { text: REUNION_LINE, after: "complete" };
+    state.speech = { text: FINALE_LINE, after: "complete" };
+  } else if (reunion) {
+    audio.sting("music-fanfare");
+    audio.playMusic("music-inside");
+    audio.meow("greet");
+    state.speech = { text: REUNION_LINE, after: "more" };
+    state.speechNext = VET_LINE;
+  } else if (state.level.goal === "rescue") {
+    audio.sting("music-fanfare");
+    audio.ding();
+    state.speech = { text: RESCUE_LINE, after: "complete" };
+  } else if (state.level.goal === "escape") {
+    audio.sting("music-sting");
+    audio.ding();
+    state.speech = { text: ESCAPE_LINE, after: "complete" };
   } else {
     audio.sting("music-sting");
     audio.ding();
-    state.speech = { text: state.level.clue.say, after: "complete" };
+    state.speech = { text: state.level.clue ? state.level.clue.say : "Onward.", after: "complete" };
   }
   state.mode = "play";
   paintSpeech();
@@ -1358,7 +1574,7 @@ function step(state, dt, input) {
       state.progress.clues = state.progress.clues || {};
       state.progress.clues[clue.id] = true;
       saveProgress(state.progress);
-      if (state.levelIndex < LEVELS.length - 1) finish(state);
+      if (state.level.goal === "clue" || state.level.goal === "rescue" || state.level.goal === "escape") finish(state);
       else {
         state.speech = { text: clue.say, after: "play" };
         audio.sting("music-sting");
@@ -1368,7 +1584,7 @@ function step(state, dt, input) {
     }
   }
   const owner = state.level.owner;
-  if (state.levelIndex >= LEVELS.length - 1 && player.x + PW > owner.x && player.y + PH > owner.y) finish(state);
+  if ((state.level.goal === "reunion" || state.level.goal === "finale") && player.x + PW > owner.x && player.y + PH > owner.y) finish(state);
   for (const mark of state.level.checkpoints || []) {
     if (mark.got || !player.onGround) continue;
     if (Math.abs(player.x + PW / 2 - mark.x) < 40) {
@@ -1386,6 +1602,7 @@ function step(state, dt, input) {
     state.bannerT = 2;
     audio.meow("curious");
   }
+  if (state.level.theme === "night" && state.time % 9 < dt) audio.thunder();
   state.bannerT = Math.max(0, state.bannerT - dt);
   state.shake = Math.max(0, state.shake - dt * 12);
   state.comboT = Math.max(0, (state.comboT || 0) - dt);
@@ -1573,10 +1790,13 @@ const palette = {
   porch: { sky0: "#2eb6f2", sky1: "#9ae7ff", sky2: "#fff1b0", sun: "#fff6c8", hill: "#ff8f4a", floor: "#ef8a32", couch: "#ff5d8f", table: "#7c5cff", shelf: "#3ecf8e", sill: "#ffd23f", hearth: "#f27d3a", rug: "#5ad7a5" },
   yard: { sky0: "#3ec8ff", sky1: "#b8f08a", sky2: "#fff4b0", sun: "#fff6c2", hill: "#49c45a", floor: "#d4893a", couch: "#ff5d8f", table: "#ffe14a", shelf: "#3ecf6e", sill: "#7ed957", hearth: "#2f9e44", rug: "#ff8a3d" },
   neighbor: { sky0: "#5a3d8c", sky1: "#e36a3a", sky2: "#ffb15a", sun: "#ffd29a", hill: "#c44b7a", floor: "#6d4b86", couch: "#ff7a45", table: "#f2c14b", shelf: "#8d6cff", sill: "#ff8fb8", hearth: "#ffb15a", rug: "#3ec6c0" },
+  street: { sky0: "#49b7ee", sky1: "#c6f0a0", sky2: "#fff0c4", sun: "#fff6c8", hill: "#3f9a55", floor: "#d8a15a", couch: "#ff8a3d", table: "#f2c14b", shelf: "#7d5cff", sill: "#8ed56a", hearth: "#c9843a", rug: "#e7a0b0" },
+  vet: { sky0: "#d5e4f0", sky1: "#f4efe8", sky2: "#ffffff", sun: "#fff", hill: "#8fb8d6", floor: "#d5dde4", couch: "#7ec8c3", table: "#f7f1ea", shelf: "#c9d6e0", sill: "#b7d4c8", hearth: "#8aa0b2", rug: "#f2c14b" },
+  night: { sky0: "#241c38", sky1: "#6a4a68", sky2: "#1d2430", sun: "#f2c14b", hill: "#3d4a58", floor: "#5a4632", couch: "#c45a4a", table: "#f2c14b", shelf: "#6a4a68", sill: "#7ea0c4", hearth: "#e07a3d", rug: "#2c3340" },
 };
 
 function blockColor(theme, kind) {
-  const colors = palette[theme];
+  const colors = palette[theme] || palette.living;
   if (kind === "couch") return colors.couch;
   if (kind === "table" || kind === "chair") return colors.table;
   if (kind === "shelf" || kind === "perch" || kind === "cage") return colors.shelf;
@@ -1781,7 +2001,7 @@ function drawEnemy(g, enemy, time) {
     g.scale(face, 1);
     drawMouse(g, enemy, step);
     g.restore();
-  } else if (enemy.kind === "bird") {
+  } else if (enemy.kind === "bird" || enemy.kind === "crow" || enemy.kind === "pigeon" || enemy.kind === "parrot") {
     drawBird(g, enemy, time);
   } else if (enemy.kind === "squirrel") {
     g.save();
@@ -1877,7 +2097,54 @@ function drawEnemy(g, enemy, time) {
     g.beginPath();
     g.arc(13, -4, 1.1, 0, Math.PI * 2);
     g.fill();
+  } else if (CRITTERS[enemy.kind]) {
+    drawCritter(g, enemy, step);
   }
+  g.restore();
+}
+
+function drawCritter(g, enemy, step) {
+  const color = CRITTERS[enemy.kind] || "#c4a484";
+  const face = enemy.dir === -1 ? -1 : 1;
+  g.save();
+  g.scale(face, 1);
+  if (enemy.dead > 0) g.rotate(1.2);
+  limb(g, -4, 6, step, color, "#f6efe6", 7);
+  limb(g, 4, 6, step + Math.PI, color, "#f6efe6", 7);
+  g.fillStyle = color;
+  g.beginPath();
+  g.ellipse(0, 0, enemy.big ? 16 : 12, enemy.big ? 10 : 8, 0, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#fff6ee";
+  g.beginPath();
+  g.ellipse(2, 2, 6, 4, 0, 0, Math.PI * 2);
+  g.fill();
+  if (enemy.kind === "raccoon") {
+    g.fillStyle = "#3a3432";
+    g.fillRect(4, -4, 7, 3);
+    g.fillStyle = "#6a625c";
+    g.beginPath();
+    g.ellipse(-12, 2, 4, 8, -0.6, 0, Math.PI * 2);
+    g.fill();
+  } else if (enemy.kind === "dog" || enemy.kind === "bulldog") {
+    g.fillStyle = color;
+    g.beginPath();
+    g.ellipse(8, -8, 4, 6, 0.2, 0, Math.PI * 2);
+    g.fill();
+  } else if (enemy.kind === "toy") {
+    g.fillStyle = "#f2c14b";
+    g.fillRect(-6, 4, 14, 5);
+  } else if (enemy.kind === "tech" || enemy.kind === "nurse") {
+    g.strokeStyle = "#3a6f8a";
+    g.lineWidth = 1.4;
+    g.beginPath();
+    g.arc(10, -2, 7, 0, Math.PI * 2);
+    g.stroke();
+  }
+  g.fillStyle = "#2a211c";
+  g.beginPath();
+  g.arc(7, -1, 1.1, 0, Math.PI * 2);
+  g.fill();
   g.restore();
 }
 
@@ -2034,7 +2301,27 @@ function drawClueIcon(g, id, x, y, scale, lit) {
   if (id === "glasses") drawGlasses(g, lit);
   else if (id === "slippers") drawSlippers(g, lit);
   else if (id === "yarn") drawYarn(g, lit);
-  else drawHandbag(g, lit);
+  else if (id === "friend") {
+    g.fillStyle = clueInk(lit, "#e7a0b0");
+    g.beginPath();
+    g.arc(0, 1, 6, 0, Math.PI * 2);
+    g.fill();
+    g.beginPath();
+    g.moveTo(-4, -2);
+    g.lineTo(-7, -8);
+    g.lineTo(-1, -4);
+    g.moveTo(4, -2);
+    g.lineTo(7, -8);
+    g.lineTo(1, -4);
+    g.fill();
+  } else if (id === "tag" || id === "bell" || id === "paw" || id === "ribbon" || id === "bobber" || id === "crumb" || id === "chart" || id === "cone" || id === "screw" || id === "vial" || id === "leash" || id === "brolly" || id === "grate" || id === "shingle" || id === "sock" || id === "flap") {
+    g.fillStyle = clueInk(lit, "#f2c14b");
+    g.beginPath();
+    g.arc(0, 0, 5, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = clueInk(lit, "#e07a3d");
+    g.fillRect(-1.2, -1, 2.4, 6);
+  } else drawHandbag(g, lit);
   g.restore();
 }
 
@@ -2447,18 +2734,102 @@ function drawWorld(state) {
     ctx.fill();
     ctx.globalAlpha = 1;
   }
-  if (state.fishing) {
-    ctx.strokeStyle = "rgba(255,248,242,0.8)";
-    ctx.beginPath();
-    ctx.moveTo(state.player.x + 20, state.player.y + 20);
-    ctx.lineTo(state.fishing.spot.x + 40, state.fishing.spot.y);
-    ctx.stroke();
-    const bite = state.fishing.t > state.fishing.bite && !state.fishing.caught;
-    ctx.fillStyle = bite ? "#f0b429" : "#fff";
-    ctx.beginPath();
-    ctx.arc(state.fishing.spot.x + 40, state.fishing.spot.y, bite ? 8 : 5, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  ctx.restore();
+  if (state.fishing) drawFishing(state);
+}
+
+function drawFishing(state) {
+  const fish = state.fishing;
+  if (!fish) return;
+  const dpr = state.dpr || 1;
+  const w = view.width / dpr;
+  const h = view.height / dpr;
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "rgba(36, 24, 28, 0.35)";
+  ctx.fillRect(0, 0, w, h);
+  const cardW = Math.min(460, Math.max(280, w - 280));
+  const cardH = Math.min(228, Math.max(168, h - 132));
+  const x = (w - cardW) / 2;
+  const y = Math.max(58, (h - cardH) / 2 - 4);
+  round(ctx, x, y, cardW, cardH, 28);
+  ctx.fillStyle = "rgba(255, 248, 242, 0.96)";
+  ctx.fill();
+  const bite = fish.t > fish.bite && !fish.caught && fish.t < fish.bite + 0.42;
+  const title = fish.caught ? "A fish on the line." : bite ? "Reel!" : "Wait for the tug";
+  ctx.fillStyle = bite ? "#c45a12" : "#3a2a22";
+  ctx.font = "800 22px 'Avenir Next', 'Segoe UI', sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(title, x + cardW / 2, y + 36);
+  const span = 2.6;
+  const mx = x + 36;
+  const my = y + 52;
+  const mw = cardW - 72;
+  round(ctx, mx, my, mw, 18, 9);
+  ctx.fillStyle = "#efe2d2";
+  ctx.fill();
+  const zone = Math.max(0.04, 0.42 / span);
+  const start = Math.max(0, Math.min(1 - zone, fish.bite / span));
+  round(ctx, mx + mw * start, my, mw * zone, 18, 9);
+  ctx.fillStyle = bite ? "#f0b429" : "#f6d48a";
+  ctx.fill();
+  const mark = Math.max(0, Math.min(1, fish.t / span));
+  ctx.fillStyle = "#2c241c";
+  round(ctx, mx + mw * mark - 3, my - 4, 6, 26, 3);
+  ctx.fill();
+  const px = x + cardW * 0.58;
+  const py = y + cardH * 0.7;
+  const prx = cardW * 0.3;
+  const pry = Math.min(46, cardH * 0.2);
+  const water = ctx.createLinearGradient(0, py - pry, 0, py + pry);
+  water.addColorStop(0, "#8fd4f2");
+  water.addColorStop(1, "#2f7ed6");
+  ctx.fillStyle = water;
+  ctx.beginPath();
+  ctx.ellipse(px, py, prx, pry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.7)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(px, py - 4, prx * 0.72, pry * 0.28, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  const rodX = x + 48;
+  const rodTop = y + 78;
+  ctx.strokeStyle = "#c9843a";
+  ctx.lineWidth = 7;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(rodX, py + 8);
+  ctx.quadraticCurveTo(rodX + 30, rodTop, px - 16, rodTop + 8);
+  ctx.stroke();
+  ctx.fillStyle = "#8a5a32";
+  ctx.beginPath();
+  ctx.arc(rodX + 4, py + 4, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#efe4d4";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(rodX + 4, py + 4, 5, 0, Math.PI * 2);
+  ctx.stroke();
+  const bobX = px + Math.sin(fish.t * 2.4) * 16;
+  const bobY = py + (bite ? Math.sin(fish.t * 26) * 7 : Math.sin(fish.t * 2) * 3);
+  ctx.strokeStyle = "rgba(44, 32, 24, 0.55)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(px - 16, rodTop + 8);
+  ctx.lineTo(bobX, bobY - 12);
+  ctx.stroke();
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(bobX, bobY, bite ? 16 : 13, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = bite ? "#f0b429" : "#e23b3b";
+  ctx.beginPath();
+  ctx.arc(bobX, bobY + 2, bite ? 16 : 13, 0, Math.PI);
+  ctx.fill();
+  ctx.fillStyle = "#5c4638";
+  ctx.font = "600 15px 'Avenir Next', 'Segoe UI', sans-serif";
+  ctx.fillText(fish.caught ? "Nice cast." : "Tap Reel when the marker hits gold.", x + cardW / 2, y + cardH - 16);
   ctx.restore();
 }
 
@@ -2485,9 +2856,68 @@ const hud = document.querySelector("#hud");
 const pad = document.querySelector("#pad");
 const fishBtn = document.querySelector("#fish-btn");
 
+function openMap() {
+  for (const name of ["title", "select", "story", "complete", "settings", "credits", "shop"]) {
+    const el = document.querySelector(`#${name}`);
+    if (el) el.hidden = true;
+  }
+  document.querySelector("#overlay").hidden = true;
+  hud.hidden = false;
+  pad.hidden = false;
+  screen = "map";
+  ensureMap(progress);
+  const world = WORLDS[progress.map.world] || WORLDS[0];
+  audio.playMusic(world.tune);
+  const jump = document.querySelector("#jump");
+  if (jump) jump.textContent = "Play";
+  paintMapChrome();
+}
+
+function paintMapChrome() {
+  const world = WORLDS[progress.map.world] || WORLDS[0];
+  levelName.textContent = world.name;
+  fishCount.textContent = String(progress.fishBank || 0);
+  hearts.textContent = "♥".repeat(progress.easy || progress.extraHeart ? 4 : 3);
+}
+
+function doMapAction(action) {
+  if (!action || action.type === "locked") {
+    return;
+  }
+  if (action.type === "level") {
+    const index = LEVELS.findIndex((level) => level.id === action.id);
+    if (index >= 0) startLevel(index);
+    return;
+  }
+  if (action.type === "shop") {
+    document.querySelector("#overlay").hidden = false;
+    document.querySelector("#shop-fish").textContent = `${progress.fishBank || 0} fish in the bank.`;
+    show("shop");
+    return;
+  }
+  if (action.type === "bonus") {
+    progress.cleared = progress.cleared || {};
+    if (!progress.cleared[action.id]) {
+      progress.fishBank = (progress.fishBank || 0) + 6;
+      progress.cleared[action.id] = true;
+      saveProgress(progress);
+      audio.chime();
+    }
+    return;
+  }
+  if (action.type === "check") {
+    progress.cleared = progress.cleared || {};
+    progress.cleared[action.id] = true;
+    progress.map = progress.map || { world: 0, node: action.id };
+    saveProgress(progress);
+    audio.ding();
+  }
+}
+
 function show(id) {
-  for (const name of ["title", "select", "story", "complete", "settings", "credits"]) {
-    document.querySelector(`#${name}`).hidden = name !== id;
+  for (const name of ["title", "select", "story", "complete", "settings", "credits", "shop"]) {
+    const el = document.querySelector(`#${name}`);
+    if (el) el.hidden = name !== id;
   }
   const playing = id === "play";
   hud.hidden = !playing;
@@ -2527,13 +2957,15 @@ function startLevel(index) {
   audio.playMusic(LEVELS[index].music);
   audio.setPurr(false);
   levelName.textContent = LEVELS[index].name;
+  const jumpLabel = document.querySelector("#jump");
+  if (jumpLabel) jumpLabel.textContent = "Jump";
   state.speech = { text: state.level.clue.open, after: "play" };
   show("play");
   paintSpeech();
 }
 
 function showComplete(current) {
-  const finale = current.levelIndex >= LEVELS.length - 1;
+  const finale = current.level.goal === "finale";
   const clue = current.level.clue;
   document.querySelector("#complete-kicker").textContent = finale ? "You found her" : "A clue";
   document.querySelector("#complete-title").textContent = finale
@@ -2547,8 +2979,8 @@ function showComplete(current) {
     ? REUNION_LINE
     : clue ? `${clue.say} On to ${clue.next}.` : "A trail of clues. Keep going.";
   document.querySelector("#complete-copy").textContent = `${trail} Fish ${current.fishGot} / ${current.level.fishValue}. Belly ${filled}/${cans.length || 3}.`;
-  document.querySelector("#next-level").hidden = finale;
-  document.querySelector("#next-level").textContent = clue && !finale ? `On to ${clue.next}` : "Next room";
+  document.querySelector("#next-level").hidden = false;
+  document.querySelector("#next-level").textContent = finale ? "New game plus" : "Back to the map";
   document.querySelector("#complete-credits").hidden = !finale;
   show("complete");
   drawReunion();
@@ -2596,9 +3028,11 @@ function paintHud() {
     const pen = tracker.getContext("2d");
     pen.setTransform(3, 0, 0, 3, 0, 0);
     pen.clearRect(0, 0, 148, 32);
-    CLUES.forEach((spec, index) => {
+    const pack = state.level && state.level.world ? worldClues(state.level.world) : CLUES;
+    const row = pack.length ? pack : CLUES;
+    row.slice(0, 5).forEach((spec, index) => {
       const found = !!(state.progress.clues && state.progress.clues[spec.id]);
-      drawClueIcon(pen, spec.id, 18 + index * 36, 16, 1.05, found);
+      drawClueIcon(pen, spec.id, 16 + index * (row.length > 4 ? 28 : 36), 16, 1.05, found);
     });
   }
   banner.hidden = state.bannerT <= 0;
@@ -2684,11 +3118,25 @@ function loop(now) {
         fishPressed: pressed.fish,
         action: held.action,
         actionPressed: pressed.action,
+        reelPressed: pressed.reel,
+        donePressed: pressed.done,
       };
-      pressed.jump = pressed.scratch = pressed.fish = pressed.action = false;
+      pressed.jump = pressed.scratch = pressed.fish = pressed.action = pressed.reel = pressed.done = false;
       step(state, dt, input);
       drawWorld(state);
       paintHud();
+    } else if (screen === "map") {
+      const input = {
+        left: held.left,
+        right: held.right,
+        up: held.up,
+        jumpPressed: pressed.jump,
+      };
+      pressed.jump = false;
+      const action = stepMap(progress, input, dt);
+      if (action) doMapAction(action);
+      drawMap(ctx, view.width / (state && state.dpr || 1), view.height / (state && state.dpr || 1), state && state.dpr || 1, progress, makeCat(progress.cat), performance.now() / 1000);
+      paintMapChrome();
     } else if (screen === "select") {
       drawPreview();
     } else if (screen === "complete") {
@@ -2762,6 +3210,12 @@ function advanceSpeech() {
   const after = state.speech.after;
   state.speech = null;
   paintSpeech();
+  if (after === "more" && state.speechNext) {
+    state.speech = { text: state.speechNext, after: "complete" };
+    state.speechNext = "";
+    paintSpeech();
+    return;
+  }
   if (after === "complete") {
     state.mode = "complete";
     showComplete(state);
@@ -2771,7 +3225,7 @@ function advanceSpeech() {
 function drawReunion() {
   const canvas = document.querySelector("#reunion");
   if (!canvas || document.querySelector("#complete").hidden) return;
-  const finale = state && state.levelIndex >= LEVELS.length - 1;
+  const finale = state && state.level && (state.level.goal === "finale" || state.level.goal === "reunion");
   const g = canvas.getContext("2d");
   const time = performance.now() / 1000;
   g.setTransform(1, 0, 0, 1, 0, 0);
@@ -2868,6 +3322,8 @@ function padKeys() {
     ["scratch", "#scratch"],
     ["fish", "#fish-btn"],
     ["action", "#action"],
+    ["reel", "#reel"],
+    ["done", "#fish-done"],
   ];
 }
 
@@ -2876,8 +3332,9 @@ function nearestPad(x, y) {
   let bestD = 96;
   for (const [key, selector] of padKeys()) {
     const el = document.querySelector(selector);
-    if (!el || el.hidden || el.disabled) continue;
+    if (!el || el.hidden || el.disabled || el.closest("[hidden]")) continue;
     const rect = el.getBoundingClientRect();
+    if (rect.width < 8 || rect.height < 8) continue;
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
     const near = x >= rect.left - 32 && x <= rect.right + 32 && y >= rect.top - 32 && y <= rect.bottom + 32;
@@ -2898,12 +3355,38 @@ function syncRidePad() {
     el.disabled = !riding;
     el.classList.toggle("idle", !riding);
   }
+  syncFishPad();
   if (!riding) {
     held.up = false;
     held.down = false;
     for (const [id, key] of pointers) {
       if (key === "up" || key === "down") pointers.delete(id);
     }
+  }
+}
+
+function syncFishPad() {
+  const fishing = !!(state && state.fishing);
+  const dpad = document.querySelector("#dpad");
+  const play = document.querySelector("#play-buttons");
+  const controls = document.querySelector("#fish-controls");
+  if (dpad) dpad.hidden = fishing;
+  if (play) play.hidden = fishing;
+  if (controls) controls.hidden = !fishing;
+  const reel = document.querySelector("#reel");
+  if (reel && fishing) {
+    const fish = state.fishing;
+    const bite = fish.t > fish.bite && !fish.caught && fish.t < fish.bite + 0.42;
+    reel.textContent = fish.caught ? "Got" : bite ? "Reel" : "Cast";
+  }
+  if (!fishing) return;
+  held.left = false;
+  held.right = false;
+  held.up = false;
+  held.down = false;
+  held.scratch = false;
+  for (const [id, key] of [...pointers]) {
+    if (key !== "reel" && key !== "done") pointers.delete(id);
   }
 }
 
@@ -2918,7 +3401,7 @@ function holdKey(key, on) {
   if (!key) return;
   const still = on ? true : [...pointers.values()].some((name) => name === key);
   held[key] = on || still;
-  if (on && (key === "jump" || key === "scratch" || key === "fish" || key === "action")) pressed[key] = true;
+  if (on && (key === "jump" || key === "scratch" || key === "fish" || key === "action" || key === "reel" || key === "done")) pressed[key] = true;
   paintPad();
 }
 
@@ -2987,11 +3470,39 @@ function boot() {
     if (state) state.mode = "pause";
     openSettings();
   });
+  document.querySelector("#shop-close").addEventListener("click", () => openMap());
+  const buy = (id, cost, apply) => {
+    document.querySelector(id).addEventListener("click", () => {
+      if ((progress.fishBank || 0) < cost) return;
+      progress.fishBank -= cost;
+      apply();
+      saveProgress(progress);
+      document.querySelector("#shop-fish").textContent = `${progress.fishBank} fish in the bank.`;
+      audio.chime();
+    });
+  };
+  buy("#buy-collar", 8, () => { progress.owned.collar = true; progress.cat.collar = true; });
+  buy("#buy-hat", 12, () => { progress.owned.hat = true; progress.cat.hat = true; });
+  buy("#buy-heart", 6, () => { progress.extraHeart = true; });
+  document.querySelector("#easy-toggle").addEventListener("click", () => {
+    progress.easy = !progress.easy;
+    saveProgress(progress);
+    document.querySelector("#easy-toggle").textContent = progress.easy ? "Easier on" : "Easier off";
+  });
+  document.querySelector("#view").addEventListener("pointerdown", (event) => {
+    if (screen !== "map") return;
+    const rect = view.getBoundingClientRect();
+    const world = hitWorld(event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height);
+    if (world == null) return;
+    const action = stepMap(progress, { world }, 0);
+    if (action) doMapAction(action);
+  });
   document.querySelector("#settings-close").addEventListener("click", () => {
-    if (state && state.mode === "pause") {
+    if (returnTo === "play" && state) {
       state.mode = "play";
       show("play");
-    } else show("title");
+    } else if (returnTo === "map") openMap();
+    else show("title");
   });
   document.querySelector("#credits-open").addEventListener("click", () => show("credits"));
   document.querySelector("#credits-close").addEventListener("click", () => {
@@ -2999,10 +3510,23 @@ function boot() {
     else openSettings();
   });
   document.querySelector("#story-next").addEventListener("click", nextStory);
-  document.querySelector("#story-skip").addEventListener("click", () => startLevel(0));
+  document.querySelector("#story-skip").addEventListener("click", () => openMap());
   document.querySelector("#speech").addEventListener("click", advanceSpeech);
   document.querySelector("#complete-credits").addEventListener("click", () => show("credits"));
-  document.querySelector("#next-level").addEventListener("click", () => startLevel(Math.min(LEVELS.length - 1, state.levelIndex + 1)));
+  document.querySelector("#next-level").addEventListener("click", () => {
+    if (state && state.level && state.level.goal === "finale") {
+      progress.plus = true;
+      progress.cleared = {};
+      progress.stars = {};
+      progress.foundOwner = false;
+      progress.friend = false;
+      progress.escaped = false;
+      progress.home = false;
+      progress.map = { world: 0, node: "living" };
+      saveProgress(progress);
+    }
+    openMap();
+  });
   document.querySelector("#replay").addEventListener("click", () => startLevel(state.levelIndex));
   document.querySelector("#to-title").addEventListener("click", () => {
     audio.playMusic("music-inside");
@@ -3065,6 +3589,7 @@ function boot() {
     if (key === "j" || key === "k") pressed.scratch = true;
     if (key === "f") pressed.fish = true;
     if (key === "e") pressed.action = true;
+    if (key === "escape" && state && state.fishing) pressed.done = true;
   });
   window.addEventListener("keyup", (event) => {
     const key = event.key.toLowerCase();
@@ -3207,7 +3732,7 @@ function fillJumps() {
 const STORY = [
   { title: "She went for a walk.", copy: "The owner went out for a walk and never came back. Only you can find her." },
   { title: "A trail of clues.", copy: "She left her glasses, her slippers, a ball of yarn, and her keys." },
-  { title: "Find her.", copy: "Start in the living room. Follow what she dropped, all the way to tea." },
+  { title: "Find her.", copy: "The map of the house is next. Follow what she dropped, all the way to tea. After that, the neighborhood, the vet, and the rainy way home." },
 ];
 let storyPage = 0;
 
@@ -3219,7 +3744,7 @@ function openStory() {
 
 function nextStory() {
   storyPage += 1;
-  if (storyPage >= STORY.length) startLevel(0);
+  if (storyPage >= STORY.length) openMap();
   else paintStory();
 }
 
@@ -3227,7 +3752,7 @@ function paintStory() {
   const page = STORY[storyPage] || STORY[0];
   document.querySelector("#story-title").textContent = page.title;
   document.querySelector("#story-copy").textContent = page.copy;
-  document.querySelector("#story-next").textContent = storyPage >= STORY.length - 1 ? "Into the living room" : "Next";
+  document.querySelector("#story-next").textContent = storyPage >= STORY.length - 1 ? "To the map" : "Next";
   const canvas = document.querySelector("#story-art");
   if (!canvas) return;
   const g = canvas.getContext("2d");
@@ -3253,7 +3778,10 @@ function paintStory() {
   if (storyPage !== 1) drawLady(g, canvas.width * 0.72, canvas.height - 36, 0.8, storyPage === 2 ? "neighbor" : "living", storyPage === 0 ? "idle" : "reunion");
 }
 
+let returnTo = "title";
+
 function openSettings() {
+  returnTo = screen === "play" || screen === "map" ? screen : "title";
   syncSound();
   const found = CLUES.filter((spec) => progress.clues && progress.clues[spec.id]).map((spec) => spec.label.toLowerCase());
   const goal = document.querySelector("#goal-line");
@@ -3263,6 +3791,8 @@ function openSettings() {
       : "Find the owner. She left her glasses, slippers, yarn, and keys.";
   }
   document.querySelector("#unlock-all").textContent = progress.unlockAll ? "All levels open" : "Unlock all levels";
+  const easy = document.querySelector("#easy-toggle");
+  if (easy) easy.textContent = progress.easy ? "Easier on" : "Easier off";
   fillJumps();
   show("settings");
 }
@@ -3693,10 +4223,20 @@ function auditReach(level, levelIndex) {
         best = stand;
       }
     }
-    const to = best ? { x: best.x, y: Math.min(GROUND - 28, best.y - 30) } : { x: 140, y: GROUND - 34 };
-    moved.push({ fromX: Math.round(fish.x), fromY: Math.round(fish.y), toX: Math.round(to.x), toY: Math.round(to.y) });
-    fish.x = to.x;
-    fish.y = to.y;
+    let nextX = best ? best.x : 160;
+    let nextY = best ? Math.min(GROUND - 28, best.y - 36) : GROUND - 34;
+    let guard = 0;
+    while (inside(nextX, nextY) && guard < 8) {
+      nextY -= 28;
+      guard += 1;
+    }
+    if (inside(nextX, nextY) || nextY < 48) {
+      nextX = 160;
+      nextY = GROUND - 34;
+    }
+    moved.push({ fromX: Math.round(fish.x), fromY: Math.round(fish.y), toX: Math.round(nextX), toY: Math.round(nextY) });
+    fish.x = nextX;
+    fish.y = nextY;
   }
   if (level.clue && !can(level.clue)) {
     level.clue.x = Math.min(level.clue.x, level.owner.x - 120);
@@ -3820,11 +4360,131 @@ function spawnTest() {
   return { ok: true, enemies: first.level.enemies.length };
 }
 
+function patrolTest() {
+  const bad = [];
+  const watch = ["squirrel", "mouse", "chicken", "rooster", "raccoon", "dog", "bulldog", "possum", "toy", "tech", "nurse", "alley"];
+  for (let index = 0; index < LEVELS.length; index++) {
+    const trial = fresh(quietProgress(), index);
+    const tracked = trial.level.enemies.filter((enemy) => watch.includes(enemy.kind) && !enemy.chaser);
+    const history = tracked.map(() => ({ dirs: [], xs: [] }));
+    for (let frame = 0; frame < 360; frame++) {
+      step(trial, 1 / 60, still());
+      tracked.forEach((enemy, i) => {
+        history[i].dirs.push(enemy.dir === -1 ? -1 : 1);
+        history[i].xs.push(enemy.x);
+      });
+    }
+    tracked.forEach((enemy, i) => {
+      const dirs = history[i].dirs;
+      let flips = 0;
+      let windowFlips = 0;
+      let worst = 0;
+      for (let frame = 1; frame < dirs.length; frame++) {
+        if (dirs[frame] !== dirs[frame - 1]) {
+          flips += 1;
+          windowFlips += 1;
+        }
+        if (frame > 60 && dirs[frame - 60] !== dirs[frame - 61]) windowFlips -= 1;
+        if (windowFlips > worst) worst = windowFlips;
+      }
+      const xs = history[i].xs;
+      const moved = Math.max(...xs) - Math.min(...xs);
+      if (worst > 3) bad.push({ id: trial.level.id, kind: enemy.kind, x: Math.round(enemy.x), worst, flips });
+      if (moved < 6 && flips > 2) bad.push({ id: trial.level.id, kind: enemy.kind, why: "stuck", flips, moved: Math.round(moved) });
+    });
+  }
+  const wedge = fresh(quietProgress(), 1);
+  const stuck = { kind: "squirrel", x: 400, y: GROUND - 20, min: 430, max: 390, dir: 1, hp: 1, home: GROUND - 20, alive: true };
+  wedge.level.enemies.push(stuck);
+  let wedgeFlips = 0;
+  let prev = 1;
+  for (let frame = 0; frame < 180; frame++) {
+    step(wedge, 1 / 60, still());
+    const dir = stuck.dir === -1 ? -1 : 1;
+    if (dir !== prev) wedgeFlips += 1;
+    prev = dir;
+  }
+  if (wedgeFlips > 4) bad.push({ kind: "wedge", flips: wedgeFlips });
+  if (bad.length) throw new Error(`patrol ${JSON.stringify(bad.slice(0, 5))}`);
+  return { ok: true, wedgeFlips };
+}
+
+function fishUiTest() {
+  document.querySelector("#overlay").hidden = true;
+  document.querySelector("#pad").hidden = false;
+  const progress = quietProgress();
+  progress.rod = false;
+  const yard = fresh(progress, 2);
+  yard.player.x = yard.level.rod.x;
+  yard.player.y = GROUND - PH;
+  yard.player.onGround = true;
+  step(yard, 1 / 60, still());
+  const unlocked = yard.gotRod === true && yard.progress.rod === true;
+  startLevel(3);
+  state.speech = null;
+  document.querySelector("#speech").hidden = true;
+  state.gotRod = true;
+  const spot = state.level.water[0];
+  state.player.x = spot.x + 12;
+  state.player.y = GROUND - PH;
+  state.player.onGround = true;
+  state.fishing = null;
+  paintHud();
+  const idle = document.querySelector("#dpad").hidden === false && document.querySelector("#play-buttons").hidden === false && document.querySelector("#fish-controls").hidden === true;
+  state.fishing = { t: 0, bite: 0.15, caught: false, spot };
+  paintHud();
+  const reel = document.querySelector("#reel");
+  const done = document.querySelector("#fish-done");
+  const reelBox = reel.getBoundingClientRect();
+  const doneBox = done.getBoundingClientRect();
+  const hiddenPlay = document.querySelector("#dpad").hidden === true && document.querySelector("#jump").getBoundingClientRect().width === 0;
+  const shown = reelBox.width > 70 && doneBox.width > 60;
+  const apart = reelBox.left > doneBox.right + 80 && reelBox.left > window.innerWidth * 0.55;
+  const bank = state.progress.fishBank;
+  step(state, 0.2, { ...still(), reelPressed: true });
+  const caught = !!(state.fishing && state.fishing.caught && state.progress.fishBank > bank);
+  step(state, 0.05, { ...still(), donePressed: true });
+  const closed = state.fishing == null;
+  paintHud();
+  const back = document.querySelector("#dpad").hidden === false && document.querySelector("#jump").getBoundingClientRect().width > 40;
+  const ok = unlocked && idle && hiddenPlay && shown && apart && caught && closed && back;
+  if (!ok) throw new Error(JSON.stringify({ unlocked, idle, hiddenPlay, shown, apart, caught, closed, back, bank: state.progress.fishBank }));
+  return { ok: true };
+}
+
+function mapTest() {
+  const snap = JSON.parse(JSON.stringify(progress));
+  progress.cleared = {};
+  progress.stars = {};
+  progress.map = { world: 0, node: "living" };
+  openMap();
+  const onMap = screen === "map";
+  progress.map.node = "porch";
+  const blocked = enterCurrent(progress).type === "locked";
+  progress.map.node = "living";
+  const open = enterCurrent(progress);
+  progress.cleared.living = true;
+  progress.foundOwner = false;
+  saveProgress(progress);
+  const raw = JSON.parse(localStorage.getItem(KEY) || "{}");
+  const round = !!(raw.cleared && raw.cleared.living);
+  const ids = ["sidewalk", "alley", "rooftops", "treetop", "dogpark", "waiting", "exam", "vents", "closet", "frontdesk", "rainy", "drains", "chase", "fencerun", "homecoming", "fishpond", "skirmish"];
+  const won = ids.map((id) => simulate(id).won);
+  progress.cleared = snap.cleared || {};
+  progress.stars = snap.stars || {};
+  progress.map = snap.map || { world: 0, node: "living" };
+  progress.foundOwner = snap.foundOwner;
+  saveProgress(progress);
+  const ok = onMap && blocked && open.type === "level" && open.id === "living" && round && won.every(Boolean);
+  if (!ok) throw new Error(JSON.stringify({ onMap, blocked, open, round, won }));
+  return { ok: true, levels: won.length };
+}
+
 function storyTest() {
   progress.cat = progress.cat || { name: "Miso", gender: "girl", hair: "short", coat: "orange", eyes: "green" };
   openStory();
   document.querySelector("#story-skip").click();
-  const skipped = screen === "play" && state && state.levelIndex === 0 && document.querySelector("#story").hidden === true;
+  const skipped = screen === "map" && document.querySelector("#story").hidden === true;
   const trial = fresh(progress, 0);
   trial.mode = "play";
   const clue = trial.level.clue;
@@ -3835,7 +4495,8 @@ function storyTest() {
   const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
   const picked = !!(trial.won && trial.level.clue.got && saved.clues && saved.clues.glasses && trial.speech && trial.speech.text.includes("reading glasses"));
   const finale = simulate("neighbor");
-  const ownerOnlyAtEnd = LEVELS.every((level, index) => level.ownerHere === (index === LEVELS.length - 1));
+  const reunions = LEVELS.filter((level) => level.ownerHere).map((level) => level.id);
+  const ownerOnlyAtEnd = reunions.includes("neighbor") && reunions.includes("homecoming") && reunions.length === 2;
   return {
     skipped,
     picked,
@@ -4122,6 +4783,9 @@ window.sunbeam = {
   rideControlTest,
   storyTest,
   spawnTest,
+  patrolTest,
+  fishUiTest,
+  mapTest,
   stepTest,
   enemyZoom,
   behaviorCard,
