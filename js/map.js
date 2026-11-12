@@ -808,13 +808,24 @@ function drawNode(g, progress, id, time) {
     g.arc(0, 0, 30 + Math.sin(time * 5) * 3, 0, Math.PI * 2);
     g.stroke();
   }
-  g.fillStyle = open ? "#fffaf4" : "rgba(255,248,242,0.4)";
+  g.fillStyle = open ? "#fffaf4" : "rgba(90, 80, 70, 0.35)";
   g.beginPath();
   g.arc(0, 0, boss ? 24 : 18, 0, Math.PI * 2);
   g.fill();
   g.lineWidth = 3;
-  g.strokeStyle = boss ? "#c45a3a" : "#5c4638";
+  g.strokeStyle = open ? (boss ? "#c45a3a" : "#5c4638") : "#8a7b70";
   g.stroke();
+  if (!open) {
+    g.strokeStyle = "#3a2a22";
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(0, -3, 5, Math.PI, 0);
+    g.stroke();
+    g.fillStyle = "#3a2a22";
+    g.fillRect(-6, -2, 12, 9);
+    g.restore();
+    return;
+  }
   if (node.kind === "fish") {
     g.fillStyle = "#3aa0d8";
     g.beginPath();

@@ -456,6 +456,8 @@ LEVELS.forEach((level, index) => {
   };
   level.ownerHere = level.goal === "reunion" || level.goal === "finale";
 });
+const livingRoom = LEVELS.find((level) => level.id === "living");
+if (livingRoom) livingRoom.secret = { id: "ceiling-toy", x: 1560, y: 96, got: false };
 LEVELS.forEach((level, index) => {
   level.audit = auditReach(level, index);
 });
@@ -494,6 +496,7 @@ function loadProgress() {
       escaped: Boolean(raw.escaped),
       home: Boolean(raw.home),
       plus: Boolean(raw.plus),
+      secrets: raw.secrets || {},
     };
   } catch (error) {
     return {
@@ -516,6 +519,7 @@ function loadProgress() {
       escaped: false,
       home: false,
       plus: false,
+      secrets: {},
     };
   }
 }
@@ -1594,6 +1598,25 @@ function step(state, dt, input) {
       state.bannerT = 1.4;
     }
   }
+  const toy = state.level.secret;
+  if (toy && !toy.got && player.ride) {
+    const dx = toy.x - (player.x + PW / 2);
+    const dy = toy.y - (player.y + 24);
+    if (dx * dx + dy * dy < 36 * 36) {
+      toy.got = true;
+      state.progress.secrets = state.progress.secrets || {};
+      state.progress.secrets[toy.id] = true;
+      state.progress.fishBank = (state.progress.fishBank || 0) + 5;
+      saveProgress(state.progress);
+      state.banner = "A secret toy, hidden by the ceiling!";
+      state.bannerT = 2;
+      audio.chime();
+      audio.ding();
+      for (let i = 0; i < 10; i++) {
+        state.particles.push({ x: toy.x, y: toy.y, vx: Math.cos(i) * 40, vy: Math.sin(i) * 40 - 20, life: 0.6, max: 0.6, kind: "spark", color: i % 2 ? "#f2c14b" : "#fff6ea" });
+      }
+    }
+  }
   if (!state.gotRod && state.level.rod && Math.abs(player.x - state.level.rod.x) < 36) {
     state.gotRod = true;
     state.progress.rod = true;
@@ -2609,6 +2632,24 @@ function drawWorld(state) {
   }
   for (const mark of level.checkpoints || []) drawCheckpoint(ctx, mark, state.time);
   for (const fish of level.fish) drawFish(ctx, fish, state.time);
+  if (level.secret && !level.secret.got) {
+    const toy = level.secret;
+    ctx.save();
+    ctx.translate(toy.x, toy.y + Math.sin(state.time * 3) * 3);
+    ctx.fillStyle = "rgba(242, 193, 75, 0.35)";
+    ctx.beginPath();
+    ctx.arc(0, 0, 16 + Math.sin(state.time * 5) * 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#e23b4a";
+    ctx.beginPath();
+    ctx.arc(0, 0, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#f2c14b";
+    ctx.beginPath();
+    ctx.arc(-3, -3, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
   for (const enemy of level.enemies) {
     if (enemy.kind !== "bird") continue;
     const px = enemy.perchX == null ? enemy.x : enemy.perchX;
@@ -2946,6 +2987,8 @@ function show(id) {
   const playing = id === "play";
   hud.hidden = !playing;
   pad.hidden = !playing;
+  const overlay = document.querySelector("#overlay");
+  if (overlay) overlay.hidden = playing;
   screen = id;
 }
 
@@ -2982,6 +3025,7 @@ function startLevel(index) {
   audio.setPurr(false);
   levelName.textContent = LEVELS[index].name;
   setMapChrome(false);
+  if (state.level.secret && progress.secrets && progress.secrets[state.level.secret.id]) state.level.secret.got = true;
   state.speech = { text: state.level.clue.open, after: "play" };
   show("play");
   paintSpeech();
@@ -3497,10 +3541,7 @@ function boot() {
   });
   document.querySelector("#back-title").addEventListener("click", () => show("title"));
   document.querySelector("#title-settings").addEventListener("click", () => openSettings());
-  document.querySelector("#pause").addEventListener("click", () => {
-    if (state) state.mode = "pause";
-    openSettings();
-  });
+  document.querySelector("#pause").addEventListener("click", () => openSettings());
   document.querySelector("#shop-close").addEventListener("click", () => openMap());
   const buy = (id, cost, apply) => {
     document.querySelector(id).addEventListener("click", () => {
@@ -3539,13 +3580,7 @@ function boot() {
     const action = enterCurrent(progress);
     if (action) doMapAction(action);
   });
-  document.querySelector("#settings-close").addEventListener("click", () => {
-    if (returnTo === "play" && state) {
-      state.mode = "play";
-      show("play");
-    } else if (returnTo === "map") openMap();
-    else show("title");
-  });
+  document.querySelector("#settings-close").addEventListener("click", () => resumeFromSettings());
   document.querySelector("#credits-open").addEventListener("click", () => show("credits"));
   document.querySelector("#credits-close").addEventListener("click", () => {
     if (state && state.won) show("complete");
@@ -3822,8 +3857,25 @@ function paintStory() {
 
 let returnTo = "title";
 
+function resumeFromSettings() {
+  releasePads();
+  loop.last = performance.now();
+  audio.resume();
+  if (returnTo === "play" && state) {
+    state.mode = "play";
+    show("play");
+    document.querySelector("#overlay").hidden = true;
+    if (state.speech) paintSpeech();
+  } else if (returnTo === "map") openMap();
+  else show("title");
+}
+
 function openSettings() {
   returnTo = screen === "play" || screen === "map" ? screen : "title";
+  releasePads();
+  if (returnTo === "play" && state) state.mode = "pause";
+  document.querySelector("#overlay").hidden = false;
+  audio.pause();
   syncSound();
   const found = CLUES.filter((spec) => progress.clues && progress.clues[spec.id]).map((spec) => spec.label.toLowerCase());
   const goal = document.querySelector("#goal-line");
@@ -4554,6 +4606,133 @@ function mapLayoutTest() {
   return { ok: true, cat };
 }
 
+function clueFlowTest() {
+  const snap = JSON.parse(JSON.stringify(progress));
+  const bad = [];
+  for (let index = 0; index < LEVELS.length; index++) {
+    startLevel(index);
+    const id = state.level.id;
+    const goal = state.level.goal;
+    state.speech = null;
+    if (goal === "reunion" || goal === "finale") {
+      state.player.x = state.level.owner.x - 8;
+      state.player.y = GROUND - PH;
+      state.player.onGround = true;
+    } else if (state.level.clue) {
+      state.player.x = state.level.clue.x - 16;
+      state.player.y = GROUND - PH;
+      state.player.onGround = true;
+    }
+    for (let i = 0; i < 20; i++) step(state, 1 / 60, still());
+    let guard = 0;
+    while (state.speech && guard < 6) {
+      advanceSpeech();
+      guard += 1;
+    }
+    const panel = screen === "complete" && document.querySelector("#overlay").hidden === false && document.querySelector("#complete").hidden === false;
+    if (!state.won || !panel) bad.push({ id, won: !!state.won, screen, overlay: document.querySelector("#overlay").hidden });
+    if (goal !== "finale" && panel) {
+      document.querySelector("#next-level").click();
+      if (screen !== "map" || !progress.cleared[id]) bad.push({ id, back: screen, cleared: !!(progress.cleared && progress.cleared[id]) });
+    }
+  }
+  progress.cleared = snap.cleared || {};
+  progress.stars = snap.stars || {};
+  progress.clues = snap.clues || {};
+  progress.foundOwner = snap.foundOwner;
+  progress.friend = snap.friend;
+  progress.escaped = snap.escaped;
+  progress.home = snap.home;
+  progress.map = snap.map || { world: 0, node: "living" };
+  saveProgress(progress);
+  if (bad.length) throw new Error(JSON.stringify(bad.slice(0, 4)));
+  return { ok: true, levels: LEVELS.length };
+}
+
+function secretTest() {
+  startLevel(0);
+  state.speech = null;
+  const toy = state.level.secret;
+  state.player.ride = null;
+  state.player.x = toy.x - 16;
+  state.player.y = 198;
+  state.player.vy = -650;
+  state.player.onGround = false;
+  let peak = state.player.y;
+  for (let i = 0; i < 90; i++) step(state, 1 / 60, still());
+  peak = Math.min(peak, state.player.y);
+  const jumpMiss = toy.got === false && peak > toy.y + 12;
+  state.player.x = toy.x - 10;
+  state.player.y = toy.y - 20;
+  state.player.vy = 0;
+  state.player.ride = { ride: 6 };
+  step(state, 1 / 60, still());
+  const got = toy.got === true && progress.secrets && progress.secrets["ceiling-toy"] === true;
+  if (!(jumpMiss && got)) throw new Error(JSON.stringify({ jumpMiss, got, peak, toyY: toy.y }));
+  return { ok: true };
+}
+
+function pauseTest() {
+  document.querySelector("#overlay").hidden = true;
+  startLevel(0);
+  state.speech = null;
+  state.player.ride = { ride: 8, x: state.player.x, flyY: 200 };
+  state.fishing = { t: 0.2, bite: 2, caught: false, spot: { x: 10, y: 10, w: 40 } };
+  held.right = true;
+  document.querySelector("#pause").click();
+  const paused = state.mode === "pause" && screen === "settings" && document.querySelector("#overlay").hidden === false && document.querySelector("#settings").hidden === false && held.right === false;
+  document.querySelector("#settings-close").click();
+  const resumed = state.mode === "play" && screen === "play" && document.querySelector("#overlay").hidden === true && document.querySelector("#pad").hidden === false && state.player.ride && state.fishing && audio.hidden === false;
+  state.fishing = null;
+  state.player.ride = null;
+  const before = state.player.x;
+  step(state, 1 / 60, { ...still(), right: true });
+  const moved = state.player.x > before;
+  state.speech = { text: "Oh look, her reading glasses!", after: "play" };
+  document.querySelector("#pause").click();
+  document.querySelector("#settings-close").click();
+  const speechBack = state.mode === "play" && state.speech && state.speech.text.includes("glasses") && screen === "play";
+  state.speech = null;
+  state.fishing = null;
+  state.player.ride = null;
+  if (!(paused && resumed && moved && speechBack)) throw new Error(JSON.stringify({ paused, resumed, moved, speechBack, mode: state.mode, screen }));
+  return { ok: true };
+}
+
+function mapLockTest() {
+  const snap = JSON.parse(JSON.stringify(progress));
+  progress.cleared = {};
+  progress.stars = {};
+  progress.unlockAll = false;
+  progress.map = { world: 0, node: "living" };
+  const right = { left: false, right: true, up: false, down: false, jumpPressed: false };
+  const rest = { left: false, right: false, up: false, down: false, jumpPressed: false };
+  stepMap(progress, right, 1 / 60);
+  for (let i = 0; i < 40; i++) stepMap(progress, rest, 1 / 60);
+  const stayed = progress.map.node === "living";
+  progress.map.node = "porch";
+  const blocked = enterCurrent(progress).type === "locked";
+  progress.cleared.living = true;
+  saveProgress(progress);
+  const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
+  progress.map.node = "living";
+  stepMap(progress, right, 1 / 60);
+  for (let i = 0; i < 40; i++) stepMap(progress, rest, 1 / 60);
+  const porch = progress.map.node === "porch";
+  stepMap(progress, right, 1 / 60);
+  for (let i = 0; i < 40; i++) stepMap(progress, rest, 1 / 60);
+  const yardLocked = progress.map.node === "porch";
+  progress.cleared = snap.cleared || {};
+  progress.stars = snap.stars || {};
+  progress.map = snap.map || { world: 0, node: "living" };
+  progress.unlockAll = Boolean(snap.unlockAll);
+  saveProgress(progress);
+  if (!(stayed && blocked && saved.cleared && saved.cleared.living && !saved.unlockAll && porch && yardLocked)) {
+    throw new Error(JSON.stringify({ stayed, blocked, porch, yardLocked, unlockAll: saved.unlockAll }));
+  }
+  return { ok: true };
+}
+
 function mapBranchTest() {
   const snap = JSON.parse(JSON.stringify(progress));
   progress.cleared = { living: true, porch: true, yard: true, nap: true };
@@ -4899,6 +5078,10 @@ window.sunbeam = {
   mapTest,
   mapLayoutTest,
   mapBranchTest,
+  mapLockTest,
+  pauseTest,
+  clueFlowTest,
+  secretTest,
   stepTest,
   enemyZoom,
   behaviorCard,
